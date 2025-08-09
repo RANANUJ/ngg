@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../widgets/custom_text_field.dart';
-import '../themes/app_theme.dart';
+
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 
@@ -153,7 +153,7 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
                 }
                 : {},
       };
-      final response = await ApiService().createCampaign(data);
+      await ApiService.instance.createCampaign(data);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -161,7 +161,8 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        context.pop();
+        // Return success to trigger refresh in NGO dashboard
+        context.pop(true);
       }
     } catch (e) {
       if (mounted) {

@@ -12,10 +12,10 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
-    super.initState();
-    Future.delayed(const Duration(seconds: 6), () {
+    super.initState(); 
+    Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
-        GoRouter.of(context).go('/onboarding');
+        GoRouter.of(context).go('/onboarding');    
       }
     });
   }

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -68,6 +69,22 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
+      // Test API connection first
+      final apiService = ApiService.instance;
+      final connectionTest = await apiService.testApiConnection();
+      
+      if (!connectionTest) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cannot connect to server. Please check your network connection.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
       final success = await context.read<AuthProvider>().signup(
         _nameController.text.trim(),
         _emailController.text.trim(),

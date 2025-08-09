@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
-import '../themes/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 
@@ -17,9 +16,10 @@ class VolunteerDashboardScreen extends StatefulWidget {
 class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _selectedIndex = 0;
+  // Removed unused selected index
   bool _isLoading = false;
   List<Map<String, dynamic>> _donationRequests = [];
+  List<Map<String, dynamic>> _activeCampaigns = [];
 
   @override
   void initState() {
@@ -31,9 +31,11 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final donationRequests = await ApiService().getAllDonationRequests();
+      final donationRequests = await ApiService.instance.getAllDonationRequests();
+      final campaigns = await ApiService.instance.getAllCampaigns();
       setState(() {
         _donationRequests = donationRequests;
+        _activeCampaigns = campaigns;
         _isLoading = false;
       });
     } catch (e) {
@@ -42,9 +44,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
     }
   }
 
-  void _refreshAfterAction() async {
-    await _fetchData();
-  }
+  // Removed unused _refreshAfterAction
 
   @override
   void dispose() {
@@ -193,11 +193,6 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
           ),
           child: TabBar(
             controller: _tabController,
-            onTap: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
             labelColor: const Color(0xFF6A11CB),
             unselectedLabelColor: const Color(0xFF94A3B8),
             indicatorColor: const Color(0xFF6A11CB),
@@ -408,21 +403,33 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
     );
   }
 
-  Widget _buildRequestsTab() {
+    Widget _buildRequestsTab() {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFF6A11CB)),
-      );
+       );
     }
-    if (_donationRequests.isEmpty) {
-      return Center(
-        child: Text(
-          'No urgent requests found.',
-          style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey),
+    if (_donationRequests.isEmpty && _activeCampaigns.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _fetchData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: Center(
+              child: Text(
+                'No urgent requests or campaigns found.\nPull to refresh',
+                style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         ),
       );
     }
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: _fetchData,
+      child: SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,7 +438,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Urgent Requests',
+                'Urgent Requests & Campaigns',
                 style: GoogleFonts.poppins(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -454,6 +461,14 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
             ],
           ),
           const SizedBox(height: 16),
+          // Fundraising campaigns list for volunteers to contribute
+          ..._activeCampaigns.map((c) => Column(
+                children: [
+                  _buildVolunteerCampaignCard(c),
+                  const SizedBox(height: 12),
+                ],
+              )).toList(),
+          if (_activeCampaigns.isNotEmpty) const SizedBox(height: 12),
           ..._donationRequests.map(
             (d) => Column(
               children: [
@@ -469,6 +484,168 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
                 const SizedBox(height: 12),
               ],
             ),
+          ).toList(),
+        ],
+      ),
+    ),
+    );
+  }
+
+  Widget _buildVolunteerCampaignCard(Map<String, dynamic> c) {
+    final double target = (c['target_amount'] ?? 0).toDouble();
+    final double raised = (c['raised_amount'] ?? 0).toDouble();
+    final double progress = target > 0 ? (raised / target).clamp(0.0, 1.0) : 0.0;
+
+    final TextEditingController controller = TextEditingController();
+
+    Future<void> donate() async {
+      final amount = double.tryParse(controller.text);
+      if (amount == null || amount <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid amount')),
+        );
+        return;
+      }
+      try {
+        await ApiService.instance.donateToCampaign(
+          campaignId: c['_id'],
+          amount: amount,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Thank you for donating ₹${amount.toStringAsFixed(2)}')),
+        );
+        controller.clear();
+        await _fetchData(); // Refresh to show updated progress
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ApiService.instance.getErrorMessage(e))),
+        );
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 1,
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.campaign, color: Color(0xFF3B82F6), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c['title'] ?? '',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF1E293B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      c['description'] ?? '',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${(progress * 100).toInt()}%',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF3B82F6),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Raised', style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF64748B))),
+                  Text('₹${raised.toStringAsFixed(0)}', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF10B981))),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('Target', style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF64748B))),
+                  Text('₹${target.toStringAsFixed(0)}', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: progress,
+            backgroundColor: const Color(0xFFE2E8F0),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Amount (₹)',
+                    prefixIcon: const Icon(Icons.attach_money),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: donate,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6A11CB),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Donate'),
+              ),
+            ],
           ),
         ],
       ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
-import '../themes/app_theme.dart';
+
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 
@@ -16,7 +16,7 @@ class NGODashboardScreen extends StatefulWidget {
 class _NGODashboardScreenState extends State<NGODashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _selectedIndex = 0;
+
   bool _isLoading = false;
   List<Map<String, dynamic>> _campaigns = [];
   List<Map<String, dynamic>> _donationRequests = [];
@@ -31,8 +31,8 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final campaigns = await ApiService().getUserCampaigns();
-      final donationRequests = await ApiService().getUserDonationRequests();
+      final campaigns = await ApiService.instance.getUserCampaigns();
+      final donationRequests = await ApiService.instance.getUserDonationRequests();
       print('Fetched campaigns: ' + campaigns.toString());
       print('Fetched donation requests: ' + donationRequests.toString());
       setState(() {
@@ -199,9 +199,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
           child: TabBar(
             controller: _tabController,
             onTap: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
+              // Tab selection handled by TabController
             },
             labelColor: const Color(0xFF6A11CB),
             unselectedLabelColor: const Color(0xFF94A3B8),
@@ -257,6 +255,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           _buildWelcomeCard(),
           const SizedBox(height: 24),
@@ -361,6 +360,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               value,
@@ -369,15 +369,21 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            const SizedBox(height: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.poppins(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),  
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -393,108 +399,101 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
     required int totalItemsNeeded,
     required int totalItemsReceived,
   }) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
+    return Column(
       children: [
-        _buildStatCard(
-          'Active Campaigns',
-          totalCampaigns.toString(),
-          Icons.campaign,
-          const Color(0xFF6A11CB),
-          'Total fundraising campaigns',
+        Row(
+          children: [
+            Expanded(
+              child: _buildNewStatCard(
+                'Campaigns',
+                totalCampaigns.toString(),
+                Icons.campaign,
+                const Color(0xFF6A11CB),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildNewStatCard(
+                'Total Raised',
+                '₹${totalRaised.toStringAsFixed(0)}',
+                Icons.monetization_on,
+                const Color(0xFF10B981),
+              ),
+            ),
+          ],
         ),
-        _buildStatCard(
-          'Total Raised',
-          '₹${totalRaised.toStringAsFixed(0)}',
-          Icons.monetization_on,
-          const Color(0xFF10B981),
-          'Total money raised',
-        ),
-        _buildStatCard(
-          'Donation Requests',
-          totalDonationRequests.toString(),
-          Icons.inventory,
-          const Color(0xFFF59E0B),
-          'Total donation requests',
-        ),
-        _buildStatCard(
-          'Items Received',
-          totalItemsReceived.toString(),
-          Icons.check_circle,
-          const Color(0xFF3B82F6),
-          'Total items received',
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildNewStatCard(
+                'Requests',
+                totalDonationRequests.toString(),
+                Icons.inventory,
+                const Color(0xFFF59E0B),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildNewStatCard(
+                'Items Received',
+                totalItemsReceived.toString(),
+                Icons.check_circle,
+                const Color(0xFF3B82F6),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildStatCard(
+  Widget _buildNewStatCard(
     String title,
     String value,
     IconData icon,
     Color color,
-    String subtitle,
   ) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      height: 100,
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.08),
+            color: Colors.grey.withOpacity(0.1),
             spreadRadius: 1,
-            blurRadius: 20,
-            offset: const Offset(0, 4),
+            blurRadius: 5,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
                 ),
-                child: Icon(icon, size: 24, color: color),
-              ),
-              const Spacer(),
-              Icon(Icons.trending_up, color: color, size: 20),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w500,
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 9,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -505,6 +504,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
   Widget _buildRecentActivity() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -594,6 +594,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   title,
@@ -602,6 +603,8 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFF1E293B),
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -610,6 +613,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                     fontSize: 14,
                     color: const Color(0xFF64748B),
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -627,6 +631,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                 fontWeight: FontWeight.w600,
                 color: color,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -641,39 +646,59 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
       );
     }
     if (_campaigns.isEmpty) {
-      return Center(
-        child: Text(
-          'No fundraising campaigns found.',
-          style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey),
+      return RefreshIndicator(
+        onRefresh: _fetchData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: Center(
+              child: Text(
+                'No fundraising campaigns found.\nPull to refresh',
+                style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         ),
       );
     }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
+    return RefreshIndicator(
+      onRefresh: _fetchData,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Active Fundraising Campaigns',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1E293B),
+              Expanded(
+                child: Text(
+                  'Active Campaigns',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
               TextButton.icon(
                 onPressed: () async {
-                  await context.push('/create-fundraising');
+                  final result = await context.push('/create-fundraising');
+                  if (result == true) {
+                    _fetchData(); // Refresh data when campaign is created
+                  }
                 },
-                icon: const Icon(Icons.add, size: 20),
+                icon: const Icon(Icons.add, size: 18),
                 label: Text(
-                  'New Campaign',
+                  'New',
                   style: GoogleFonts.poppins(
                     color: const Color(0xFF6A11CB),
                     fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -699,6 +724,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -822,6 +848,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
         context.push('/campaign-details', extra: campaign);
       },
       child: Container(
+        height: 200, // Fixed height to prevent overflow
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -841,14 +868,14 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color, size: 24),
+                  child: Icon(icon, color: color, size: 20),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -856,18 +883,20 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                       Text(
                         title,
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFF1E293B),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         description,
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           color: const Color(0xFF64748B),
                         ),
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -875,17 +904,17 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 6,
+                    vertical: 3,
                   ),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     percentage,
                     style: GoogleFonts.poppins(
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                       color: color,
                     ),
@@ -893,7 +922,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -903,14 +932,14 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                     Text(
                       'Raised',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: const Color(0xFF64748B),
                       ),
                     ),
                     Text(
                       raised,
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF10B981),
                       ),
@@ -923,44 +952,44 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                     Text(
                       'Target',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: const Color(0xFF64748B),
                       ),
                     ),
                     Text(
                       target,
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1E293B),
+                        color: const Color.fromARGB(255, 248, 46, 46),
                       ),
                     ),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             LinearProgressIndicator(
               value: progress,
               backgroundColor: const Color(0xFFE2E8F0),
               valueColor: AlwaysStoppedAnimation<Color>(color),
               borderRadius: BorderRadius.circular(4),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   '${(progress * 100).toInt()}% Complete',
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: const Color(0xFF64748B),
                   ),
                 ),
                 Text(
                   'Ends $endDate',
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: const Color(0xFF64748B),
                   ),
                 ),
@@ -1131,9 +1160,12 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                         'Fundraising Campaign',
                         Icons.monetization_on,
                         Colors.green,
-                        () {
+                        () async {
                           Navigator.pop(context);
-                          context.push('/create-fundraising');
+                          final result = await context.push('/create-fundraising');
+                          if (result == true) {
+                            _fetchData(); // Refresh data when campaign is created
+                          }
                         },
                       ),
                     ),

@@ -161,6 +161,39 @@ def delete_campaign(campaign_id, user_id):
     )
     return result.deleted_count > 0
 
+def add_donation_to_campaign(campaign_id, amount, donor_id=None):
+    """Increment a campaign's raised amount by the specified amount.
+
+    Returns the updated serialized campaign or None if not found.
+    """
+    try:
+        update_result = mongo.db.campaigns.update_one(
+            {'_id': ObjectId(campaign_id)},
+            {
+                '$inc': {'raised_amount': float(amount)},
+                '$set': {'updated_at': datetime.utcnow()}
+            }
+        )
+        if update_result.matched_count == 0:
+            return None
+
+        # Optionally record a donation entry (simple audit)
+        try:
+            mongo.db.donations.insert_one({
+                'campaign_id': ObjectId(campaign_id),
+                'amount': float(amount),
+                'donor_id': ObjectId(donor_id) if donor_id else None,
+                'created_at': datetime.utcnow()
+            })
+        except Exception:
+            # Do not block on donation log failure
+            pass
+
+        updated = mongo.db.campaigns.find_one({'_id': ObjectId(campaign_id)})
+        return serialize_campaign(updated)
+    except Exception:
+        return None
+
 # Donation Request model helper functions
 def serialize_donation_request(request):
     """Convert donation request object to JSON-serializable format"""
@@ -236,7 +269,11 @@ def delete_donation_request(request_id, user_id):
 # Routes
 @app.route('/')
 def home():
-    return jsonify({'status': 'ok', 'message': 'Connect & Contribute backend is running!'})
+    return jsonify({'message': 'Connect Contribute API is running!'})
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy', 'message': 'Backend is running'})
 
 @app.route('/api/auth/signup', methods=['POST'])
 def signup():
@@ -476,6 +513,32 @@ def delete_campaign_route(campaign_id):
         return jsonify({'message': 'Campaign deleted successfully'}), 200
         
     except Exception as e:
+        return jsonify({'error': 'Internal server error'}), 500
+
+# Campaign donation route (volunteer contribution)
+@app.route('/api/campaigns/<campaign_id>/donate', methods=['POST'])
+@jwt_required()
+def donate_to_campaign_route(campaign_id):
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json() or {}
+        amount = data.get('amount')
+
+        # Basic validation
+        try:
+            amount = float(amount)
+        except Exception:
+            return jsonify({'error': 'Invalid amount'}), 422
+
+        if amount <= 0:
+            return jsonify({'error': 'Amount must be greater than 0'}), 422
+
+        updated_campaign = add_donation_to_campaign(campaign_id, amount, user_id)
+        if not updated_campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+
+        return jsonify(updated_campaign), 200
+    except Exception:
         return jsonify({'error': 'Internal server error'}), 500
 
 # Donation Request routes

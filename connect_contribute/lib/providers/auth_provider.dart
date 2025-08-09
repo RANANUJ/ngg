@@ -4,7 +4,7 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService.instance;
 
   User? _user;
   String? _token;
@@ -41,7 +41,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -75,7 +75,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
       return false;
