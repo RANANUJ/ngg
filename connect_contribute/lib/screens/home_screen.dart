@@ -12,8 +12,7 @@ class HomeScreen extends StatelessWidget {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         final user = authProvider.user;
-
-        if (user == null) {
+ if (user == null) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );

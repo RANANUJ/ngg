@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../widgets/custom_text_field.dart';
-
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 
@@ -30,6 +30,7 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
   File? _selectedImage;
   bool _isLoading = false;
   bool _showPaymentDetails = false;
+  String? _generatedUpiString;
 
   final List<String> _categories = [
     'Education',
@@ -41,6 +42,21 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
     'Community Development',
     'Other',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen to UPI ID changes to generate QR code
+    _upiIdController.addListener(_generateUpiString);
+  }
+
+  void _generateUpiString() {
+    if (_upiIdController.text.isNotEmpty) {
+      final campaignTitle = _titleController.text.isNotEmpty ? _titleController.text : "Campaign Donation";
+      _generatedUpiString = "upi://pay?pa=${_upiIdController.text}&pn=NGO%20Campaign&tn=$campaignTitle&cu=INR";
+      setState(() {});
+    }
+  }
 
   @override
   void dispose() {
@@ -150,6 +166,7 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
                   'bank_account': _bankAccountController.text.trim(),
                   'upi_id': _upiIdController.text.trim(),
                   'qr_code': _qrCodeController.text.trim(),
+                  'upi_string': _generatedUpiString ?? '',
                 }
                 : {},
       };
@@ -500,9 +517,58 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
                         prefixIcon: Icons.phone_android,
                       ),
                       const SizedBox(height: 16),
+                      
+                      // QR Code Display
+                      if (_generatedUpiString != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'QR Code for Payments',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF1E293B),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: QrImageView(
+                                  data: _generatedUpiString!,
+                                  version: QrVersions.auto,
+                                  size: 200.0,
+                                  backgroundColor: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Scan this QR code to make payments',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: const Color(0xFF64748B),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      
                       CustomTextField(
-                        label: 'QR Code URL',
-                        hint: 'Enter QR code image URL',
+                        label: 'QR Code URL (Optional)',
+                        hint: 'Enter QR code image URL if you have one',
                         controller: _qrCodeController,
                         prefixIcon: Icons.qr_code,
                       ),

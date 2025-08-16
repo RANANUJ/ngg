@@ -194,6 +194,191 @@ def add_donation_to_campaign(campaign_id, amount, donor_id=None):
     except Exception:
         return None
 
+# Enhanced donation tracking functions
+def serialize_donation(donation):
+    """Convert donation object to JSON-serializable format"""
+    if not donation:
+        return None
+    
+    donation['_id'] = str(donation['_id'])
+    donation['campaign_id'] = str(donation['campaign_id'])
+    if donation.get('donor_id'):
+        donation['donor_id'] = str(donation['donor_id'])
+    
+    if donation.get('created_at'):
+        donation['created_at'] = donation['created_at'].isoformat()
+    if donation.get('updated_at'):
+        donation['updated_at'] = donation['updated_at'].isoformat()
+    
+    return donation
+
+def create_donation(campaign_id, donation_data, donor_id=None):
+    """Create a new donation record with comprehensive tracking"""
+    try:
+        # Validate campaign exists
+        campaign = mongo.db.campaigns.find_one({'_id': ObjectId(campaign_id)})
+        if not campaign:
+            return None
+
+        amount = float(donation_data['amount'])
+        
+        # Create donation record
+        donation = {
+            'campaign_id': ObjectId(campaign_id),
+            'donor_id': ObjectId(donor_id) if donor_id else None,
+            'donor_name': donation_data.get('donor_name', 'Anonymous'),
+            'donor_email': donation_data.get('donor_email'),
+            'donor_phone': donation_data.get('donor_phone'),
+            'amount': amount,
+            'payment_method': donation_data.get('payment_method', 'UPI'),
+            'status': donation_data.get('status', 'completed'),
+            'transaction_id': donation_data.get('transaction_id'),
+            'message': donation_data.get('message'),
+            'is_anonymous': donation_data.get('is_anonymous', False),
+            'additional_info': donation_data.get('additional_info', {}),
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow()
+        }
+        
+        # Insert donation
+        result = mongo.db.donations.insert_one(donation)
+        donation['_id'] = result.inserted_id
+        
+        # Update campaign raised amount
+        mongo.db.campaigns.update_one(
+            {'_id': ObjectId(campaign_id)},
+            {
+                '$inc': {'raised_amount': amount},
+                '$set': {'updated_at': datetime.utcnow()}
+            }
+        )
+        
+        # Update campaign donation stats
+        mongo.db.campaigns.update_one(
+            {'_id': ObjectId(campaign_id)},
+            {
+                '$inc': {'total_donations': 1},
+                '$push': {
+                    'recent_donations': {
+                        'amount': amount,
+                        'donor_name': donation['donor_name'],
+                        'created_at': donation['created_at']
+                    }
+                }
+            }
+        )
+        
+        return serialize_donation(donation)
+    except Exception as e:
+        print(f"Error creating donation: {e}")
+        return None
+
+def get_campaign_donations(campaign_id, limit=50):
+    """Get donations for a specific campaign"""
+    try:
+        donations = list(mongo.db.donations.find(
+            {'campaign_id': ObjectId(campaign_id)}
+        ).sort('created_at', -1).limit(limit))
+        return [serialize_donation(d) for d in donations]
+    except Exception as e:
+        print(f"Error fetching campaign donations: {e}")
+        return []
+
+def get_user_donations(user_id, limit=50):
+    """Get donations made by a specific user"""
+    try:
+        donations = list(mongo.db.donations.find(
+            {'donor_id': ObjectId(user_id)}
+        ).sort('created_at', -1).limit(limit))
+        return [serialize_donation(d) for d in donations]
+    except Exception as e:
+        print(f"Error fetching user donations: {e}")
+        return []
+
+def get_donation_stats(campaign_id):
+    """Get comprehensive donation statistics for a campaign"""
+    try:
+        pipeline = [
+            {'$match': {'campaign_id': ObjectId(campaign_id)}},
+            {'$group': {
+                '_id': None,
+                'total_amount': {'$sum': '$amount'},
+                'total_donations': {'$sum': 1},
+                'average_donation': {'$avg': '$amount'},
+                'highest_donation': {'$max': '$amount'},
+                'payment_methods': {
+                    '$push': '$payment_method'
+                }
+            }}
+        ]
+        
+        result = list(mongo.db.donations.aggregate(pipeline))
+        if result:
+            stats = result[0]
+            # Count payment methods
+            payment_methods = {}
+            for method in stats.get('payment_methods', []):
+                payment_methods[method] = payment_methods.get(method, 0) + 1
+            
+            return {
+                'total_amount': stats.get('total_amount', 0),
+                'total_donations': stats.get('total_donations', 0),
+                'average_donation': round(stats.get('average_donation', 0), 2),
+                'highest_donation': stats.get('highest_donation', 0),
+                'payment_methods': payment_methods
+            }
+        else:
+            return {
+                'total_amount': 0,
+                'total_donations': 0,
+                'average_donation': 0,
+                'highest_donation': 0,
+                'payment_methods': {}
+            }
+    except Exception as e:
+        print(f"Error fetching donation stats: {e}")
+        return {
+            'total_amount': 0,
+            'total_donations': 0,
+            'average_donation': 0,
+            'highest_donation': 0,
+            'payment_methods': {}
+        }
+
+def record_upi_payment(campaign_id, amount, payment_details, donor_id=None):
+    """Record a UPI payment for a campaign with enhanced tracking"""
+    try:
+        # Update campaign raised amount
+        update_result = mongo.db.campaigns.update_one(
+            {'_id': ObjectId(campaign_id)},
+            {
+                '$inc': {'raised_amount': float(amount)},
+                '$set': {'updated_at': datetime.utcnow()}
+            }
+        )
+        if update_result.matched_count == 0:
+            return None
+
+        # Record detailed payment entry
+        payment_record = {
+            'campaign_id': ObjectId(campaign_id),
+            'amount': float(amount),
+            'donor_id': ObjectId(donor_id) if donor_id else None,
+            'payment_method': payment_details.get('payment_method', 'UPI'),
+            'transaction_id': payment_details.get('transaction_id'),
+            'payment_status': payment_details.get('payment_status', 'completed'),
+            'payment_time': datetime.fromisoformat(payment_details['payment_time']) if payment_details.get('payment_time') else datetime.utcnow(),
+            'created_at': datetime.utcnow()
+        }
+        mongo.db.payments.insert_one(payment_record)
+
+        # Get updated campaign
+        updated = mongo.db.campaigns.find_one({'_id': ObjectId(campaign_id)})
+        return serialize_campaign(updated)
+    except Exception as e:
+        print(f"Error recording UPI payment: {e}")
+        return None
+
 # Donation Request model helper functions
 def serialize_donation_request(request):
     """Convert donation request object to JSON-serializable format"""
@@ -513,6 +698,124 @@ def delete_campaign_route(campaign_id):
         return jsonify({'message': 'Campaign deleted successfully'}), 200
         
     except Exception as e:
+        return jsonify({'error': 'Internal server error'}), 500
+
+# Enhanced Donation routes
+@app.route('/api/campaigns/<campaign_id>/donations', methods=['POST'])
+@jwt_required()
+def create_donation_route(campaign_id):
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json() or {}
+        
+        # Validate required fields
+        required_fields = ['donor_name', 'amount', 'payment_method']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'{field} is required'}), 422
+        
+        # Validate amount
+        try:
+            amount = float(data['amount'])
+            if amount <= 0:
+                return jsonify({'error': 'Amount must be greater than 0'}), 422
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid amount format'}), 422
+        
+        # Add transaction ID if not provided
+        if not data.get('transaction_id'):
+            data['transaction_id'] = f"DON_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{user_id[:8]}"
+        
+        donation = create_donation(campaign_id, data, user_id)
+        if not donation:
+            return jsonify({'error': 'Campaign not found or donation failed'}), 404
+        
+        return jsonify({
+            'message': 'Donation created successfully',
+            'donation': donation
+        }), 201
+        
+    except Exception as e:
+        print(f"Error in create donation route: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/campaigns/<campaign_id>/donations', methods=['GET'])
+def get_campaign_donations_route(campaign_id):
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        donations = get_campaign_donations(campaign_id, limit)
+        return jsonify(donations), 200
+    except Exception as e:
+        print(f"Error fetching campaign donations: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/donations/user', methods=['GET'])
+@jwt_required()
+def get_user_donations_route():
+    try:
+        user_id = get_jwt_identity()
+        limit = request.args.get('limit', 50, type=int)
+        donations = get_user_donations(user_id, limit)
+        return jsonify(donations), 200
+    except Exception as e:
+        print(f"Error fetching user donations: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/campaigns/<campaign_id>/donation-stats', methods=['GET'])
+def get_donation_stats_route(campaign_id):
+    try:
+        stats = get_donation_stats(campaign_id)
+        return jsonify(stats), 200
+    except Exception as e:
+        print(f"Error fetching donation stats: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+# UPI Payment route for campaigns
+@app.route('/api/campaigns/<campaign_id>/upi-payment', methods=['POST'])
+@jwt_required()
+def upi_payment_route(campaign_id):
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json() or {}
+        
+        amount = data.get('amount')
+        payment_method = data.get('payment_method', 'UPI')
+        transaction_id = data.get('transaction_id')
+        payment_status = data.get('payment_status', 'completed')
+        payment_time = data.get('payment_time')
+
+        # Basic validation
+        try:
+            amount = float(amount)
+        except Exception:
+            return jsonify({'error': 'Invalid amount'}), 422
+
+        if amount <= 0:
+            return jsonify({'error': 'Amount must be greater than 0'}), 422
+
+        # Prepare payment details
+        payment_details = {
+            'payment_method': payment_method,
+            'transaction_id': transaction_id,
+            'payment_status': payment_status,
+            'payment_time': payment_time
+        }
+
+        updated_campaign = record_upi_payment(campaign_id, amount, payment_details, user_id)
+        if not updated_campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+
+        return jsonify({
+            'message': 'UPI payment recorded successfully',
+            'campaign': updated_campaign,
+            'payment': {
+                'amount': amount,
+                'transaction_id': transaction_id,
+                'status': payment_status
+            }
+        }), 200
+    except Exception as e:
+        print(f"Error in UPI payment route: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 # Campaign donation route (volunteer contribution)

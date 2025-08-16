@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
+import '../services/donation_service.dart';
 
 class VolunteerDashboardScreen extends StatefulWidget {
   const VolunteerDashboardScreen({super.key});
@@ -477,7 +478,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
                   d['description'] ?? '',
                   '${d['quantity_needed'] ?? 0} ${d['unit'] ?? ''}',
                   '${d['quantity_received'] ?? 0} received',
-                  Icons.inventory,
+                  Icons.inventory,    
                   const Color(0xFFF59E0B),
                   '${((d['quantity_received'] ?? 0) / ((d['quantity_needed'] ?? 1) == 0 ? 1 : d['quantity_needed'])) * 100 ~/ 1}%',
                 ),
@@ -497,31 +498,6 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
     final double progress = target > 0 ? (raised / target).clamp(0.0, 1.0) : 0.0;
 
     final TextEditingController controller = TextEditingController();
-
-    Future<void> donate() async {
-      final amount = double.tryParse(controller.text);
-      if (amount == null || amount <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter a valid amount')),
-        );
-        return;
-      }
-      try {
-        await ApiService.instance.donateToCampaign(
-          campaignId: c['_id'],
-          amount: amount,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Thank you for donating ₹${amount.toStringAsFixed(2)}')),
-        );
-        controller.clear();
-        await _fetchData(); // Refresh to show updated progress
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ApiService.instance.getErrorMessage(e))),
-        );
-      }
-    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -633,17 +609,19 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
                     prefixIcon: const Icon(Icons.attach_money),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     isDense: true,
+                    enabled: false, // Make it read-only, amount will be set by UPI payment
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: donate,
+              ElevatedButton.icon(
+                onPressed: () => _showEnhancedDonationDialog(c),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6A11CB),
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Donate'),
+                icon: const Icon(Icons.qr_code_scanner, size: 16),
+                label: const Text('UPI Pay'),
               ),
             ],
           ),
@@ -1453,6 +1431,31 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
           ),
         ],
       ),
+    );
+  }
+
+  void _showEnhancedDonationDialog(Map<String, dynamic> campaign) {
+    final upiId = campaign['payment_details']?['upi_id'] ?? 'ngo@example.upi';
+    final targetAmount = (campaign['target_amount'] ?? 0).toDouble();
+    final currentRaised = (campaign['raised_amount'] ?? 0).toDouble();
+
+    DonationService.showDonationDialog(
+      context: context,
+      campaignId: campaign['_id'] ?? '',
+      campaignTitle: campaign['title'] ?? 'Campaign',
+      upiId: upiId,
+      targetAmount: targetAmount,
+      currentRaised: currentRaised,
+      onSuccess: () async {
+        // Refresh the data to show updated progress
+        await _fetchData();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thank you for your donation!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      },
     );
   }
 }

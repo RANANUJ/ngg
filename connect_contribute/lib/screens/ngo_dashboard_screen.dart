@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
-
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
+import '../services/upi_service.dart';
+import '../services/donation_service.dart';
 
 class NGODashboardScreen extends StatefulWidget {
   const NGODashboardScreen({super.key});
@@ -708,16 +710,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
           ..._campaigns.map(
             (c) => Column(
               children: [
-                _buildEnhancedFundraisingCard(
-                  c['title'] ?? '',
-                  c['description'] ?? '',
-                  '₹${c['target_amount']?.toStringAsFixed(0) ?? '0'}',
-                  '₹${c['raised_amount']?.toStringAsFixed(0) ?? '0'}',
-                  c['end_date']?.toString().substring(0, 10) ?? '',
-                  Icons.campaign,
-                  const Color(0xFF3B82F6),
-                  '${((c['raised_amount'] ?? 0) / ((c['target_amount'] ?? 1) == 0 ? 1 : c['target_amount'])) * 100 ~/ 1}%',
-                ),
+                _buildEnhancedFundraisingCard(c),
                 const SizedBox(height: 12),
               ],
             ),
@@ -812,22 +805,17 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
   }
 
   Widget _buildEnhancedFundraisingCard(
-    String title,
-    String description,
-    String target,
-    String raised,
-    String endDate,
-    IconData icon,
-    Color color,
-    String percentage,
+    Map<String, dynamic> campaign, // Changed to accept the full campaign object
   ) {
-    final targetAmount = double.parse(
-      target.replaceAll('₹', '').replaceAll(',', ''),
-    );
-    final raisedAmount = double.parse(
-      raised.replaceAll('₹', '').replaceAll(',', ''),
-    );
-    final progress = raisedAmount / targetAmount;
+    final String title = campaign['title'] ?? '';
+    final String description = campaign['description'] ?? '';
+    final double targetAmount = (campaign['target_amount'] ?? 0).toDouble();
+    final double raisedAmount = (campaign['raised_amount'] ?? 0).toDouble();
+    final String endDate = campaign['end_date'] ?? '';
+    final IconData icon = Icons.campaign;
+    final Color color = const Color(0xFF3B82F6);
+    
+    final progress = targetAmount > 0 ? (raisedAmount / targetAmount).clamp(0.0, 1.0) : 0.0;
 
     return GestureDetector(
       onTap: () {
@@ -848,7 +836,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
         context.push('/campaign-details', extra: campaign);
       },
       child: Container(
-        height: 200, // Fixed height to prevent overflow
+        height: 240, // Increased height to accommodate the QR button
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -912,7 +900,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    percentage,
+                    '${(progress * 100).toInt()}%',
                     style: GoogleFonts.poppins(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -937,7 +925,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                       ),
                     ),
                     Text(
-                      raised,
+                      '₹${raisedAmount.toStringAsFixed(0)}',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -957,7 +945,7 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                       ),
                     ),
                     Text(
-                      target,
+                      '₹${targetAmount.toStringAsFixed(0)}',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -987,13 +975,37 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                   ),
                 ),
                 Text(
-                  'Ends $endDate',
+                  'Ends ${endDate.substring(0, 10)}',
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     color: const Color(0xFF64748B),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            // QR Code Payment Button
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: ElevatedButton.icon(
+                onPressed: () => _showEnhancedDonationDialog(campaign),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6A11CB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                icon: const Icon(Icons.qr_code_scanner, size: 16),
+                label: Text(
+                  'Scan QR to Pay',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1223,85 +1235,326 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
     );
   }
 
-  Widget _buildDonationCard(
-    String title,
-    String description,
-    String needed,
-    String received,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+  void _showEnhancedDonationDialog(Map<String, dynamic> campaign) {
+    final upiId = campaign['payment_details']?['upi_id'] ?? 'ngo@example.upi';
+    final targetAmount = (campaign['target_amount'] ?? 0).toDouble();
+    final currentRaised = (campaign['raised_amount'] ?? 0).toDouble();
+
+    DonationService.showDonationDialog(
+      context: context,
+      campaignId: campaign['_id'] ?? '',
+      campaignTitle: campaign['title'] ?? 'Campaign',
+      upiId: upiId,
+      targetAmount: targetAmount,
+      currentRaised: currentRaised,
+      onSuccess: () async {
+        // Refresh the data to show updated progress
+        await _fetchData();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thank you for your donation!'),
+            backgroundColor: Colors.green,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  description,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      'Needed: $needed',
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+        );
+      },
+    );
+  }
+}
+
+// QR Payment Dialog Widget
+class QRPaymentDialog extends StatefulWidget {
+  final String campaignTitle;
+  final double targetAmount;
+  final double currentRaised;
+  final String upiId;
+  final String campaignId;
+  final Function(double) onPaymentSuccess;
+
+  const QRPaymentDialog({
+    super.key,
+    required this.campaignTitle,
+    required this.targetAmount,
+    required this.currentRaised,
+    required this.upiId,
+    required this.campaignId,
+    required this.onPaymentSuccess,
+  });
+
+  @override
+  State<QRPaymentDialog> createState() => _QRPaymentDialogState();
+}
+
+class _QRPaymentDialogState extends State<QRPaymentDialog> {
+  final _amountController = TextEditingController();
+  String? _upiString;
+
+  @override
+  void initState() {
+    super.initState();
+    _generateUpiString();
+  }
+
+  void _generateUpiString() {
+    _upiString = UpiService.generateUpiString(
+      widget.upiId,
+      'NGO Campaign',
+      widget.campaignTitle,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.currentRaised / widget.targetAmount;
+    final remainingAmount = widget.targetAmount - widget.currentRaised;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        constraints: const BoxConstraints(maxHeight: 600),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6A11CB).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 16),
+                    child: const Icon(
+                      Icons.qr_code_2,
+                      color: Color(0xFF6A11CB),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'QR Payment',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          widget.campaignTitle,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Progress Information
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Raised',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            Text(
+                              '₹${widget.currentRaised.toStringAsFixed(0)}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Remaining',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            Text(
+                              '₹${remainingAmount.toStringAsFixed(0)}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    const SizedBox(height: 8),
                     Text(
-                      'Received: $received',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green,
+                      '${(progress * 100).toInt()}% Complete',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[600],
                       ),
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 20),
+
+              // Amount Input
+              TextField(
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Enter Amount (₹)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.currency_rupee),
+                  hintText: 'e.g., 500',
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // QR Code Display
+              if (_upiString != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Scan QR Code to Pay',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      QrImageView(
+                        data: _upiString!,
+                        version: QrVersions.auto,
+                        size: 200.0,
+                        backgroundColor: Colors.white,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'UPI ID: ${widget.upiId}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
               ],
-            ),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _handleUpiPayment,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6A11CB),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Pay with UPI'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              // TODO: Edit donation request
-            },
-          ),
-        ],
+        ),
       ),
     );
+  }
+
+  void _handleUpiPayment() async {
+    final amount = double.tryParse(_amountController.text);
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid amount'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(context);
+
+    await UpiService.showUpiAppSelector(
+      context,
+      _upiString!,
+      amount,
+      widget.onPaymentSuccess,
+    );
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
   }
 }

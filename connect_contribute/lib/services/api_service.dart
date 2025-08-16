@@ -13,10 +13,10 @@ class ApiService {
     if (kIsWeb) {
       return 'http://127.0.0.1:5000/api';
     }
-    // Android emulator uses 10.0.2.2 to reach the host machine
+    // For real Android devices, use the actual network IP
     try {
       if (Platform.isAndroid) {
-        return 'http://10.0.2.2:5000/api';
+        return 'http://192.168.0.136:5000/api';  // Updated to actual backend IP
       }
     } catch (_) {}
     // Windows/macOS/Linux desktops and iOS simulator default to localhost
@@ -38,12 +38,15 @@ class ApiService {
   }
 
   void _initializeDio() {
+    print('=== API Service Debug ===');
+    print('API Base URL: $baseUrl');
+    
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 30),
+        connectTimeout: const Duration(seconds: 10),  // Reduced timeout
+        receiveTimeout: const Duration(seconds: 15),  // Reduced timeout
+        sendTimeout: const Duration(seconds: 15),     // Reduced timeout
         validateStatus: (status) {
           return status != null && status < 500;
         },
@@ -57,6 +60,7 @@ class ApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          print('API Request: ${options.method} ${options.uri}');
           try {
             // Add auth token if available
             final prefs = await SharedPreferences.getInstance();
@@ -70,9 +74,15 @@ class ApiService {
             handler.next(options);
           }
         },
+        onResponse: (response, handler) {
+          print('API Response: ${response.statusCode} ${response.requestOptions.uri}');
+          print('Response data: ${response.data}');
+          handler.next(response);
+        },
         onError: (error, handler) async {
           print('API Error: ${error.message}');
           print('API Error Type: ${error.type}');
+          print('API Error Response: ${error.response?.data}');
           
           // Handle connection errors during hot reload
           if ((error.type == DioExceptionType.connectionError ||
@@ -344,6 +354,34 @@ class ApiService {
     }
   }
 
+  // Record UPI payment for campaign
+  Future<Map<String, dynamic>> recordUpiPayment({
+    required String campaignId,
+    required double amount,
+    required String paymentMethod,
+    String? transactionId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/campaigns/$campaignId/upi-payment',
+        data: {
+          'amount': amount,
+          'payment_method': paymentMethod,
+          'transaction_id': transactionId ?? 'UPI_${DateTime.now().millisecondsSinceEpoch}',
+          'payment_status': 'completed',
+          'payment_time': DateTime.now().toIso8601String(),
+        },
+        options: Options(
+          sendTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 20),
+        ),
+      );
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getUserCampaigns() async {
     try {
       final response = await _dio.get('/campaigns');
@@ -448,6 +486,71 @@ class ApiService {
   Future<void> deleteDonationRequest(String requestId) async {
     try {
       await _dio.delete('/donation-requests/$requestId');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Donation methods
+  Future<Map<String, dynamic>> createDonation({
+    required String campaignId,
+    required Map<String, dynamic> donationData,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/campaigns/$campaignId/donations',
+        data: donationData,
+        options: Options(
+          sendTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 20),
+        ),
+      );
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getCampaignDonations(String campaignId) async {
+    try {
+      final response = await _dio.get(
+        '/campaigns/$campaignId/donations',
+        options: Options(
+          sendTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 20),
+        ),
+      );
+      return List<Map<String, dynamic>>.from(response.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getUserDonations() async {
+    try {
+      final response = await _dio.get(
+        '/donations/user',
+        options: Options(
+          sendTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 20),
+        ),
+      );
+      return List<Map<String, dynamic>>.from(response.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getDonationStats(String campaignId) async {
+    try {
+      final response = await _dio.get(
+        '/campaigns/$campaignId/donation-stats',
+        options: Options(
+          sendTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 20),
+        ),
+      );
+      return response.data;
     } catch (e) {
       rethrow;
     }
