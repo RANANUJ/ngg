@@ -11,17 +11,20 @@ class ApiService {
       return override;
     }
     if (kIsWeb) {
-      return 'http://127.0.0.1:5000/api';
+      return 'http://localhost:5000/api';
     }
-    // For real Android devices, use the actual network IP
+    // For real Android devices, try multiple possible IPs
     try {
       if (Platform.isAndroid) {
-        return 'http://192.168.0.136:5000/api';  // Updated to actual backend IP
+        // Use 10.0.2.2 for Android emulator, or set your actual IP
+        return 'http://10.0.2.2:5000/api';  // Android emulator
+        // return 'http://192.168.1.100:5000/api';  // Replace with your actual network IP
       }
     } catch (_) {}
     // Windows/macOS/Linux desktops and iOS simulator default to localhost
-    return 'http://127.0.0.1:5000/api';
+    return 'http://localhost:5000/api';
   }
+  
   static ApiService? _instance;
   late Dio _dio;
   bool _isReconnecting = false;
@@ -44,9 +47,9 @@ class ApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 10),  // Reduced timeout
-        receiveTimeout: const Duration(seconds: 15),  // Reduced timeout
-        sendTimeout: const Duration(seconds: 15),     // Reduced timeout
+        connectTimeout: const Duration(seconds: 15),  // Increased timeout
+        receiveTimeout: const Duration(seconds: 20),  // Increased timeout
+        sendTimeout: const Duration(seconds: 20),     // Increased timeout
         validateStatus: (status) {
           return status != null && status < 500;
         },
@@ -148,21 +151,21 @@ class ApiService {
   Future<bool> isBackendReachable() async {
     try {
       await _dio.get('/health', options: Options(
-        sendTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 5),
+        sendTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
       ));
       return true;
     } catch (e) {
-      print('Backend not reachable: $e');
+      print('Backend not reachable via /health: $e');
       // Try root endpoint as fallback
       try {
         await _dio.get('/', options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
         ));
         return true;
       } catch (e2) {
-        print('Backend not reachable with root endpoint: $e2');
+        print('Backend not reachable via root endpoint: $e2');
         return false;
       }
     }
@@ -181,7 +184,7 @@ class ApiService {
           print('Backend not reachable, retrying...');
           _retryCount++;
           if (_retryCount >= maxRetries) {
-            throw Exception('Server is not reachable. Please check your connection.');
+            throw Exception('Server is not reachable. Please check your connection and ensure the backend server is running.');
           }
           await Future.delayed(Duration(seconds: _retryCount));
           continue;
@@ -191,8 +194,8 @@ class ApiService {
           '/auth/login',
           data: {'email': email, 'password': password},
           options: Options(
-            sendTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 20),
+            sendTimeout: const Duration(seconds: 30),
+            receiveTimeout: const Duration(seconds: 30),
           ),
         );
         
@@ -210,7 +213,7 @@ class ApiService {
               throw Exception('User not found');
             } else if (e.type == DioExceptionType.connectionError ||
                        e.type == DioExceptionType.connectionTimeout) {
-              throw Exception('Connection failed. Please check your internet connection.');
+              throw Exception('Connection failed. Please check your internet connection and ensure the backend server is running.');
             } else {
               throw Exception('Login failed. Please try again.');
             }
@@ -250,7 +253,7 @@ class ApiService {
           print('Backend not reachable, retrying...');
           _retryCount++;
           if (_retryCount >= maxRetries) {
-            throw Exception('Server is not reachable. Please check your connection.');
+            throw Exception('Server is not reachable. Please check your connection and ensure the backend server is running.');
           }
           await Future.delayed(Duration(seconds: _retryCount));
           continue;
@@ -265,8 +268,8 @@ class ApiService {
             'user_type': userType,
           },
           options: Options(
-            sendTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 20),
+            sendTimeout: const Duration(seconds: 30),
+            receiveTimeout: const Duration(seconds: 30),
           ),
         );
         
@@ -284,7 +287,7 @@ class ApiService {
               throw Exception('Invalid data provided');
             } else if (e.type == DioExceptionType.connectionError ||
                        e.type == DioExceptionType.connectionTimeout) {
-              throw Exception('Connection failed. Please check your internet connection.');
+              throw Exception('Connection failed. Please check your internet connection and ensure the backend server is running.');
             } else {
               throw Exception('Signup failed. Please try again.');
             }
@@ -570,7 +573,10 @@ class ApiService {
   // Test method to verify API service is working
   Future<bool> testApiConnection() async {
     try {
-      final response = await _dio.get('/health');
+      final response = await _dio.get('/health', options: Options(
+        sendTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
       return response.statusCode == 200;
     } catch (e) {
       print('API connection test failed: $e');
