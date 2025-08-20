@@ -94,8 +94,14 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (mounted) {
         if (success) {
-          // Navigate to home screen after successful signup
-          context.push('/home');
+          final user = context.read<AuthProvider>().user;
+          
+          // Navigate to appropriate dashboard based on user type
+          if (user?.userType == 'NGO') {
+            context.go('/ngo-dashboard');
+          } else {
+            context.go('/volunteer-dashboard');
+          }
         } else {
           // Show error message from AuthProvider
           final error = context.read<AuthProvider>().error;
@@ -156,7 +162,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     children: [
                       IconButton(
                         onPressed: () {
-                          context.push('/login');
+                          context.go('/login');
                         },
                         icon: Icon(
                           Icons.arrow_back,
@@ -378,7 +384,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       ),
                       TextButton(
                         onPressed: () {
-                          GoRouter.of(context).go('/login');
+                          context.go('/login');
                         },
                         child: Text(
                           'Login',
