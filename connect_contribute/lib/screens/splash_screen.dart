@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lottie/lottie.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,12 +13,31 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
-    super.initState(); 
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        GoRouter.of(context).go('/onboarding');    
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Initialize auth state
+    await context.read<AuthProvider>().initializeAuth();
+    
+    // Wait for splash duration
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (mounted) {
+      final authProvider = context.read<AuthProvider>();
+      if (authProvider.isAuthenticated) {
+        // User is logged in, navigate to appropriate dashboard
+        if (authProvider.user?.userType == 'NGO') {
+          context.go('/ngo-dashboard');
+        } else {
+          context.go('/volunteer-dashboard');
+        }
+      } else {
+        // User is not logged in, show onboarding
+        context.go('/onboarding');
       }
-    });
+    }
   }
 
   @override
@@ -45,12 +65,11 @@ class _SplashScreenState extends State<SplashScreen> {
                     'assets/images/logo.png',
                     width: 110,
                     height: 110,
-                    errorBuilder:
-                        (context, error, stackTrace) => Icon(
-                          Icons.volunteer_activism,
-                          size: 90,
-                          color: Colors.blueGrey.shade200,
-                        ),
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.volunteer_activism,
+                      size: 90,
+                      color: Colors.blueGrey.shade200,
+                    ),
                   ),
                   const SizedBox(height: 28),
                   // App title
@@ -63,25 +82,14 @@ class _SplashScreenState extends State<SplashScreen> {
                       letterSpacing: 1.1,
                     ),
                   ),
-                ],
-              ),
-            ),
-            // Lottie loading animation at the bottom center
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 48,
-              child: Center(
-                child: SizedBox(
-                  width: 140,
-                  height: 140,
-                  child: Image.asset(
-                    'assets/gif/ClickUp Loading Splash.gif',
-                    fit: BoxFit.contain,
-                    errorBuilder:
-                        (context, error, stackTrace) => const SizedBox(),
+                  const SizedBox(height: 40),
+                  // Loading indicator
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.blueGrey.shade600,
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
