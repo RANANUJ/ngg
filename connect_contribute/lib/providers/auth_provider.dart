@@ -10,6 +10,7 @@ class AuthProvider extends ChangeNotifier {
   String? _token;
   bool _isLoading = false;
   String? _error;
+  bool _isInitialized = false;
 
   // Getters
   User? get user => _user;
@@ -17,6 +18,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isAuthenticated => _token != null && _user != null;
+  bool get isInitialized => _isInitialized;
 
   // Clear error
   void clearError() {
@@ -34,9 +36,11 @@ class AuthProvider extends ChangeNotifier {
       final response = await _apiService.login(email, password);
       _token = response['token'];
       _user = User.fromJson(response['user']);
+      
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', _token!);
       await prefs.setString('user_email', _user!.email);
+      
       _isLoading = false;
       notifyListeners();
       return true;
@@ -68,9 +72,11 @@ class AuthProvider extends ChangeNotifier {
       );
       _token = response['token'];
       _user = User.fromJson(response['user']);
+      
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', _token!);
       await prefs.setString('user_email', _user!.email);
+      
       _isLoading = false;
       notifyListeners();
       return true;
@@ -84,9 +90,14 @@ class AuthProvider extends ChangeNotifier {
 
   // Logout
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('user_email');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auth_token');
+      await prefs.remove('user_email');
+    } catch (e) {
+      print('Error clearing preferences: $e');
+    }
+    
     _user = null;
     _token = null;
     _error = null;
@@ -96,22 +107,31 @@ class AuthProvider extends ChangeNotifier {
   // Get user profile
   Future<void> getUserProfile() async {
     if (!isAuthenticated) return;
+    
     try {
       final response = await _apiService.getProfile();
       _user = User.fromJson(response);
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      notifyListeners();
+      print('Error getting user profile: $e');
+      // If getting profile fails, it might mean the token is invalid
+      if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
+        await logout();
+      } else {
+        _error = e.toString();
+        notifyListeners();
+      }
     }
   }
 
   // Update user profile
   Future<bool> updateUserProfile(Map<String, dynamic> data) async {
     if (!isAuthenticated) return false;
+    
     _isLoading = true;
     _error = null;
     notifyListeners();
+    
     try {
       final response = await _apiService.updateProfile(data);
       _user = User.fromJson(response);
@@ -128,18 +148,57 @@ class AuthProvider extends ChangeNotifier {
 
   // Initialize auth state (for app startup)
   Future<void> initializeAuth() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
-    if (token != null) {
-      _token = token;
-      try {
-        final response = await _apiService.getProfile();
-        _user = User.fromJson(response);
-      } catch (e) {
-        _user = null;
-        _token = null;
+    if (_isInitialized) return;
+    
+    try {
+      print('Initializing auth state...');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      
+      if (token != null) {
+        print('Found existing token, verifying...');
+        _token = token;
+        
+        try {
+          // Verify token by getting user profile
+          final response = await _apiService.getProfile();
+          _user = User.fromJson(response);
+          print('Auth state initialized successfully for user: ${_user?.name}');
+        } catch (e) {
+          print('Token verification failed: $e');
+          // Token is invalid, clear it
+          _user = null;
+          _token = null;
+          await prefs.remove('auth_token');
+          await prefs.remove('user_email');
+        }
+      } else {
+        print('No existing token found');
       }
+    } catch (e) {
+      print('Error initializing auth state: $e');
+      // Clear any invalid state
+      _user = null;
+      _token = null;
+    } finally {
+      _isInitialized = true;
+      notifyListeners();
     }
+  }
+
+  // Reset auth state (useful for testing or forced logout)
+  Future<void> resetAuthState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (e) {
+      print('Error clearing preferences: $e');
+    }
+    
+    _user = null;
+    _token = null;
+    _error = null;
+    _isInitialized = false;
     notifyListeners();
   }
 }
