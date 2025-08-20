@@ -63,9 +63,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (mounted) {
         if (success) {
-          print('Login successful, navigating to home');
-          // Navigate to home screen after successful login
-          context.push('/home');
+          print('Login successful, navigating to dashboard');
+          final user = context.read<AuthProvider>().user;
+          
+          // Navigate to appropriate dashboard based on user type
+          if (user?.userType == 'NGO') {
+            context.go('/ngo-dashboard');
+          } else {
+            context.go('/volunteer-dashboard');
+          }
         } else {
           // Show error message from AuthProvider
           final error = context.read<AuthProvider>().error;
@@ -230,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     TextButton(
                       onPressed: () {
-                        context.push('/signup');
+                        context.go('/signup');
                       },
                       child: Text(
                         'Sign Up',
