@@ -1,84 +1,119 @@
 #!/usr/bin/env python3
 """
-Simple script to start the Connect & Contribute backend server
+Connect & Contribute Backend Server Startup Script
+
+This script starts the Flask backend server with proper configuration.
+Use this script to easily start the backend server from the command line.
+
+Usage:
+    python start_server.py
+    or
+    python3 start_server.py
 """
 
-import subprocess
-import sys
 import os
+import sys
+import subprocess
 from pathlib import Path
 
-def check_python():
-    """Check if Python 3 is available"""
-    try:
-        result = subprocess.run([sys.executable, '--version'], capture_output=True, text=True)
-        print(f"Using Python: {result.stdout.strip()}")
-        return True
-    except Exception as e:
-        print(f"Python check failed: {e}")
-        return False
+def check_python_version():
+    """Check if Python version is compatible"""
+    if sys.version_info < (3, 8):
+        print("Error: Python 3.8 or higher is required")
+        print(f"Current version: {sys.version}")
+        sys.exit(1)
+    print(f"✓ Python version: {sys.version}")
 
-def install_requirements():
-    """Install required packages"""
+def check_requirements():
+    """Check if requirements.txt exists and install dependencies"""
+    requirements_path = Path("requirements.txt")
+    if not requirements_path.exists():
+        print("Error: requirements.txt not found")
+        print("Make sure you're running this script from the backend directory")
+        sys.exit(1)
+    
+    print("✓ Found requirements.txt")
+    
+    # Check if Flask is installed
     try:
-        print("Installing requirements...")
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'], check=True)
-        print("Requirements installed successfully!")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to install requirements: {e}")
-        return False
+        import flask
+        print(f"✓ Flask is installed (version: {flask.__version__})")
+    except ImportError:
+        print("Installing dependencies from requirements.txt...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+            print("✓ Dependencies installed successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"Error installing dependencies: {e}")
+            print("Please install dependencies manually: pip install -r requirements.txt")
+            sys.exit(1)
 
 def start_server():
     """Start the Flask server"""
+    print("\n" + "="*50)
+    print("Starting Connect & Contribute Backend Server")
+    print("="*50)
+    
+    # Set environment variables
+    os.environ['FLASK_APP'] = 'app.py'
+    os.environ['FLASK_ENV'] = 'development'
+    os.environ['FLASK_DEBUG'] = '1'
+    
+    print("Server Configuration:")
+    print("- Host: 0.0.0.0 (accessible from all network interfaces)")
+    print("- Port: 5000")
+    print("- Debug Mode: Enabled")
+    print("- Auto-reload: Enabled")
+    print("\nAPI Endpoints will be available at:")
+    print("- Local: http://localhost:5000/api")
+    print("- Network: http://[your-ip]:5000/api")
+    print("\nPress Ctrl+C to stop the server")
+    print("="*50 + "\n")
+    
     try:
-        print("Starting Connect & Contribute Backend Server...")
-        print("Server will be available at: http://localhost:5000")
-        print("API endpoints will be available at: http://localhost:5000/api")
-        print("Press Ctrl+C to stop the server")
-        print("-" * 50)
-        
-        # Start the server
-        subprocess.run([sys.executable, 'app.py'], check=True)
-        
+        # Import and run the app
+        from app import app
+        app.run(
+            host='0.0.0.0',  # Allow connections from any IP
+            port=5000,
+            debug=True,
+            use_reloader=True,
+            threaded=True
+        )
+    except ImportError as e:
+        print(f"Error importing app: {e}")
+        print("Make sure app.py exists in the current directory")
+        sys.exit(1)
     except KeyboardInterrupt:
-        print("\nServer stopped by user")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to start server: {e}")
-        return False
+        print("\n\nServer stopped by user")
     except Exception as e:
-        print(f"Unexpected error: {e}")
-        return False
+        print(f"Error starting server: {e}")
+        sys.exit(1)
 
 def main():
     """Main function"""
-    print("=" * 50)
-    print("Connect & Contribute Backend Server Starter")
-    print("=" * 50)
+    print("Connect & Contribute Backend Server Startup")
+    print("==========================================\n")
     
-    # Check if we're in the backend directory
-    if not Path('app.py').exists():
-        print("Error: app.py not found. Please run this script from the backend directory.")
-        return False
+    # Check current directory
+    current_dir = Path.cwd()
+    print(f"Current directory: {current_dir}")
     
-    if not Path('requirements.txt').exists():
-        print("Error: requirements.txt not found. Please run this script from the backend directory.")
-        return False
+    # Check if we're in the right directory
+    if not Path("app.py").exists():
+        print("Error: app.py not found in current directory")
+        print("Please navigate to the backend directory first")
+        print("Example: cd backend/")
+        sys.exit(1)
     
-    # Check Python
-    if not check_python():
-        return False
+    print("✓ Found app.py")
     
-    # Install requirements
-    if not install_requirements():
-        return False
+    # Run checks
+    check_python_version()
+    check_requirements()
     
     # Start server
     start_server()
-    
-    return True
 
-if __name__ == '__main__':
-    success = main()
-    if not success:
-        sys.exit(1)
+if __name__ == "__main__":
+    main()
