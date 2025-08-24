@@ -253,9 +253,10 @@ def health_check():
         mongo.db.admin.command('ping')
         return jsonify({
             'status': 'healthy',
-            'message': 'API is running',
-            'database': 'connected',
-            'timestamp': datetime.utcnow().isoformat()
+            'message': 'Production API is running with MongoDB Atlas',
+            'database': 'MongoDB Atlas',
+            'timestamp': datetime.utcnow().isoformat(),
+            'version': '2.0.0'
         }), 200
     except Exception as e:
         return jsonify({
