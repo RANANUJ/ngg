@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../themes/app_theme.dart';
+import '../utils/network_diagnostics.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -63,15 +64,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (mounted) {
         if (success) {
-          print('Login successful, navigating to dashboard');
-          final user = context.read<AuthProvider>().user;
+          print('Login successful, checking user info');
           
-          // Navigate to appropriate dashboard based on user type
-          if (user?.userType == 'NGO') {
-            context.go('/ngo-dashboard');
-          } else {
-            context.go('/volunteer-dashboard');
+          // Get user info and prepare navigation
+          final authProvider = context.read<AuthProvider>();
+          final user = authProvider.user;
+          
+          print('User: ${user?.name}, Type: ${user?.userType}, isAuthenticated: ${authProvider.isAuthenticated}');
+          
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Login successful!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          
+          // Longer delay to ensure auth state is fully updated and router can process
+          await Future.delayed(const Duration(milliseconds: 800));
+          
+          // Check auth state again after delay
+          print('Auth state after delay - isAuthenticated: ${authProvider.isAuthenticated}, user: ${authProvider.user?.name}');
+          
+          // Manual navigation as the primary method (router redirect as backup)
+          if (mounted && authProvider.isAuthenticated) {
+            final dashboardRoute = user?.userType == 'NGO' ? '/ngo-dashboard' : '/volunteer-dashboard';
+            print('Navigating to: $dashboardRoute');
+            context.go(dashboardRoute);
           }
+          
         } else {
           // Show error message from AuthProvider
           final error = context.read<AuthProvider>().error;
@@ -171,6 +193,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
 
                 const SizedBox(height: 12),
+
+                // Network Test Button (for debugging)
+                if (context.read<AuthProvider>().error != null &&
+                    context.read<AuthProvider>().error!.contains('Connection'))
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        print('Running network diagnostics...');
+                        await NetworkDiagnostics.performDiagnostics();
+                      },
+                      icon: const Icon(Icons.network_check),
+                      label: const Text('Test Network Connection'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        side: const BorderSide(color: Colors.orange),
+                      ),
+                    ),
+                  ),
 
                 // Forgot Password
                 Align(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -18,24 +17,36 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initializeApp() async {
-    // Initialize auth state
-    await context.read<AuthProvider>().initializeAuth();
-    
-    // Wait for splash duration
-    await Future.delayed(const Duration(seconds: 2));
-    
-    if (mounted) {
-      final authProvider = context.read<AuthProvider>();
-      if (authProvider.isAuthenticated) {
-        // User is logged in, navigate to appropriate dashboard
-        if (authProvider.user?.userType == 'NGO') {
-          context.go('/ngo-dashboard');
+    try {
+      print('Splash: Starting app initialization...');
+      
+      // Initialize auth state with timeout
+      await Future.any([
+        context.read<AuthProvider>().initializeAuth(),
+        Future.delayed(const Duration(seconds: 10)) // 10 second timeout
+      ]);
+      
+      if (mounted) {
+        final authProvider = context.read<AuthProvider>();
+        print('Splash: Auth check - isAuthenticated: ${authProvider.isAuthenticated}, user: ${authProvider.user?.name}');
+        
+        // Wait for splash duration only if user is authenticated
+        if (authProvider.isAuthenticated) {
+          await Future.delayed(const Duration(seconds: 2));
         } else {
-          context.go('/volunteer-dashboard');
+          // For unauthenticated users (like after logout), show splash briefly then navigate
+          await Future.delayed(const Duration(milliseconds: 500));
         }
-      } else {
-        // User is not logged in, show onboarding
-        context.go('/onboarding');
+        
+        // The router will handle navigation automatically based on auth state
+        print('Splash: Auth initialization complete, router will handle navigation');
+      }
+    } catch (e) {
+      print('Splash: Error during initialization: $e');
+      // Even if initialization fails, continue to navigation after brief delay
+      if (mounted) {
+        await Future.delayed(const Duration(milliseconds: 1000));
+        print('Splash: Proceeding to navigation despite initialization error');
       }
     }
   }

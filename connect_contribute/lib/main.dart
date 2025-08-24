@@ -32,14 +32,56 @@ class ConnectContributeApp extends StatelessWidget {
             initialLocation: '/',
             redirect: (context, state) {
               final isLoggedIn = authProvider.isAuthenticated;
-              final isAuthRoute = ['/login', '/signup', '/onboarding', '/'].contains(state.matchedLocation);
+              final isInitialized = authProvider.isInitialized;
+              final currentPath = state.matchedLocation;
               
-              // If not logged in and trying to access protected routes
-              if (!isLoggedIn && !isAuthRoute) {
-                return '/onboarding';
+              print('Router redirect check: isLoggedIn=$isLoggedIn, isInitialized=$isInitialized, path=$currentPath');
+              print('User data: ${authProvider.user?.name}, type: ${authProvider.user?.userType}');
+              
+              // Don't redirect until auth is initialized
+              if (!isInitialized) {
+                print('Auth not initialized, staying on splash');
+                if (currentPath != '/') {
+                  return '/'; // Go to splash screen if not initialized
+                }
+                return null; // Stay on splash screen
               }
               
-              return null; // No redirect needed
+              // After initialization, handle navigation
+              if (isLoggedIn && authProvider.user != null) {
+                print('User is authenticated with user data available');
+                // User is authenticated - only redirect from auth screens and splash
+                if (['/login', '/signup', '/onboarding', '/'].contains(currentPath)) {
+                  // Redirect to appropriate dashboard
+                  final user = authProvider.user!;
+                  print('Redirecting authenticated user from $currentPath to dashboard. User type: ${user.userType}');
+                  if (user.userType == 'NGO') {
+                    print('Redirecting to NGO dashboard');
+                    return '/ngo-dashboard';
+                  } else {
+                    print('Redirecting to volunteer dashboard');
+                    return '/volunteer-dashboard';
+                  }
+                }
+                // Allow access to all other routes (protected routes)
+                print('Allowing access to protected route: $currentPath');
+                return null;
+              } else {
+                print('User is NOT authenticated or user data not available');
+                // User is not authenticated - redirect appropriately
+                if (['/ngo-dashboard', '/volunteer-dashboard', '/create-fundraising', '/create-donation-request', '/campaign-details', '/donation-request-details'].contains(currentPath)) {
+                  print('User trying to access protected route $currentPath, redirecting to onboarding');
+                  return '/onboarding';
+                }
+                // If on splash screen and not authenticated, go to onboarding
+                if (currentPath == '/') {
+                  print('User on splash screen and not authenticated, going to onboarding');
+                  return '/onboarding';
+                }
+                // Allow access to auth screens
+                print('User on auth screen $currentPath, allowing access');
+                return null;
+              }
             },
             routes: [
               GoRoute(path: '/', builder: (context, state) => const SplashScreen()),

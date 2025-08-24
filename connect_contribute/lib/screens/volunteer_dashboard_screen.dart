@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
-import '../services/donation_service.dart';
+import 'donation_screen.dart';
 
 class VolunteerDashboardScreen extends StatefulWidget {
   const VolunteerDashboardScreen({super.key});
@@ -17,6 +17,7 @@ class VolunteerDashboardScreen extends StatefulWidget {
 class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   // Removed unused selected index
   bool _isLoading = false;
   List<Map<String, dynamic>> _donationRequests = [];
@@ -68,8 +69,10 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
         }
 
         return Scaffold(
+          key: _scaffoldKey,
           backgroundColor: const Color(0xFFF8FAFC),
           appBar: _buildAppBar(),
+          drawer: _buildDrawer(authProvider),
           body: TabBarView(
             controller: _tabController,
             children: [
@@ -105,7 +108,8 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
         child: IconButton(
           icon: const Icon(Icons.menu, color: Color(0xFF6A11CB)),
           onPressed: () {
-            // TODO: Open drawer
+            print('Menu button pressed - attempting to open drawer');
+            _scaffoldKey.currentState?.openDrawer();
           },
         ),
       ),
@@ -1435,27 +1439,254 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen>
   }
 
   void _showEnhancedDonationDialog(Map<String, dynamic> campaign) {
-    final upiId = campaign['payment_details']?['upi_id'] ?? 'ngo@example.upi';
+    // Get UPI ID from campaign payment details, with a fallback to a valid test UPI ID
+    final upiId = campaign['payment_details']?['upi_id'] ?? 'demo@paytm';
     final targetAmount = (campaign['target_amount'] ?? 0).toDouble();
     final currentRaised = (campaign['raised_amount'] ?? 0).toDouble();
 
-    DonationService.showDonationDialog(
-      context: context,
-      campaignId: campaign['_id'] ?? '',
-      campaignTitle: campaign['title'] ?? 'Campaign',
-      upiId: upiId,
-      targetAmount: targetAmount,
-      currentRaised: currentRaised,
-      onSuccess: () async {
-        // Refresh the data to show updated progress
-        await _fetchData();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Thank you for your donation!'),
-            backgroundColor: Colors.green,
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DonationScreen(
+          campaignId: campaign['_id'] ?? '',
+          campaignTitle: campaign['title'] ?? 'Campaign',
+          upiId: upiId,
+          targetAmount: targetAmount,
+          currentRaised: currentRaised,
+          onSuccess: () async {
+            // Refresh the data to show updated progress
+            await _fetchData();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Thank you for your donation!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer(AuthProvider authProvider) {
+    final user = authProvider.user;
+    
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: const BoxDecoration(
+              color: Color(0xFF6A11CB),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.volunteer_activism,
+                  color: Colors.white,
+                  size: 50,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  user?.name ?? 'Volunteer',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  user?.email ?? 'volunteer@example.com',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
+          ListTile(
+            leading: const Icon(Icons.dashboard),
+            title: const Text('Dashboard'),
+            onTap: () {
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.feed),
+            title: const Text('Activity Feed'),
+            onTap: () {
+              Navigator.pop(context);
+              _tabController.animateTo(0);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.inventory),
+            title: const Text('Donation Requests'),
+            onTap: () {
+              Navigator.pop(context);
+              _tabController.animateTo(1);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.emoji_events),
+            title: const Text('Rewards'),
+            onTap: () {
+              Navigator.pop(context);
+              _tabController.animateTo(2);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              Navigator.pop(context);
+              await _showLogoutDialog();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLogoutDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.logout,
+                  color: Colors.red,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Logout',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Are you sure you want to logout? You will be redirected to the login screen.',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Logout',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
+
+    if (result == true) {
+      await _performLogout();
+    }
+  }
+
+  Future<void> _performLogout() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFF6A11CB),
+            ),
+          );
+        },
+      );
+
+      // Perform logout
+      await context.read<AuthProvider>().logout();
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+        
+        // Navigate to login screen
+        context.go('/login');
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Logged out successfully',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error during logout: ${e.toString()}',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      }
+    }
   }
 }

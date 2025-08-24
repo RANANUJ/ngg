@@ -50,7 +50,7 @@ class HomeScreen extends StatelessWidget {
   Widget _buildIndividualHome(BuildContext context, user) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
+      child: Column(   
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Welcome Section

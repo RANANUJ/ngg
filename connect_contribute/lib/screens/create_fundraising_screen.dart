@@ -619,3 +619,4 @@ class _CreateFundraisingScreenState extends State<CreateFundraisingScreen> {
     );
   }
 }
+// the food that contain all the nutreinst in right proportion is called a ba;anced diet 

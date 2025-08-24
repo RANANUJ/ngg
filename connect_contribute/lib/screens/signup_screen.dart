@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:dio/dio.dart';
 import '../widgets/custom_text_field.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -69,22 +70,29 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      // Test API connection first
+      // Test API connection first with detailed debugging
       final apiService = ApiService.instance;
+      print('Testing API connection...');
       final connectionTest = await apiService.testApiConnection();
       
       if (!connectionTest) {
+        print('API connection test failed');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cannot connect to server. Please check your network connection.'),
+            SnackBar(
+              content: const Text('Cannot connect to server. Testing multiple URLs...'),
               backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: 'Details',
+                onPressed: () => _showConnectionDebugDialog(),
+              ),
             ),
           );
         }
         return;
       }
 
+      print('API connection test successful, proceeding with signup...');
       final success = await context.read<AuthProvider>().signup(
         _nameController.text.trim(),
         _emailController.text.trim(),
@@ -94,14 +102,33 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (mounted) {
         if (success) {
-          final user = context.read<AuthProvider>().user;
+          print('Signup successful, checking user info');
           
-          // Navigate to appropriate dashboard based on user type
-          if (user?.userType == 'NGO') {
-            context.go('/ngo-dashboard');
-          } else {
-            context.go('/volunteer-dashboard');
+          // Get user info and prepare navigation
+          final authProvider = context.read<AuthProvider>();
+          final user = authProvider.user;
+          
+          print('User: ${user?.name}, Type: ${user?.userType}, isAuthenticated: ${authProvider.isAuthenticated}');
+          
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Signup successful!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1),
+            ),
+          );
+          
+          // Small delay to ensure auth state is fully updated
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          // Manual navigation as fallback if router doesn't redirect
+          if (mounted) {
+            final dashboardRoute = user?.userType == 'NGO' ? '/ngo-dashboard' : '/volunteer-dashboard';
+            print('Manually navigating to: $dashboardRoute');
+            context.go(dashboardRoute);
           }
+          
         } else {
           // Show error message from AuthProvider
           final error = context.read<AuthProvider>().error;
@@ -126,6 +153,85 @@ class _SignupScreenState extends State<SignupScreen> {
         });
       }
     }
+  }
+
+  void _showConnectionDebugDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Connection Debug'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Testing backend connectivity:'),
+              const SizedBox(height: 10),
+              FutureBuilder<List<String>>(
+                future: _testAllUrls(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
+                  if (snapshot.hasData) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: snapshot.data!.map((result) => 
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(result, style: const TextStyle(fontSize: 12)),
+                        )
+                      ).toList(),
+                    );
+                  }
+                  return const Text('Error testing connections');
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<List<String>> _testAllUrls() async {
+    List<String> results = [];
+    
+    // Test each possible URL
+    final urls = [
+      'http://192.168.0.136:5000/api',
+      'http://10.0.2.2:5000/api',
+      'http://192.168.1.100:5000/api',
+      'http://192.168.43.1:5000/api',
+      'http://localhost:5000/api',
+    ];
+    
+    for (String url in urls) {
+      try {
+        final testDio = Dio(BaseOptions(
+          baseUrl: url,
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+        ));
+        
+        final response = await testDio.get('/health');
+        if (response.statusCode == 200) {
+          results.add('✓ $url - SUCCESS');
+        } else {
+          results.add('✗ $url - HTTP ${response.statusCode}');
+        }
+      } catch (e) {
+        results.add('✗ $url - ${e.toString().substring(0, 50)}...');
+      }
+    }
+    
+    return results;
   }
 
   @override

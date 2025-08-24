@@ -4,25 +4,46 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Determines the base URL depending on platform or a compile-time override
-  static String get baseUrl {
-    const String override = String.fromEnvironment('API_BASE_URL', defaultValue: '');
-    if (override.isNotEmpty) {
-      return override;
+  // List of possible backend URLs to try
+  static List<String> get possibleUrls {
+    // Check for production API URL from environment variables
+    const String prodUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+    if (prodUrl.isNotEmpty) {
+      return [prodUrl];
     }
+    
+    // Check for Render deployment URL (update this with your actual Render URL)
+    const String renderUrl = 'https://connect-contribute-backend.onrender.com/api';
+    
     if (kIsWeb) {
-      return 'http://localhost:5000/api';
+      return [
+        renderUrl,                          // Try Render first for web
+        'http://localhost:5000/api'         // Local fallback
+      ];
     }
-    // For real Android devices, try multiple possible IPs
+    
+    // For mobile devices, try Render first, then local IPs
     try {
-      if (Platform.isAndroid) {
-        // Use 10.0.2.2 for Android emulator, or set your actual IP
-        return 'http://10.0.2.2:5000/api';  // Android emulator
-        // return 'http://192.168.1.100:5000/api';  // Replace with your actual network IP
+      if (Platform.isAndroid || Platform.isIOS) {
+        return [
+          renderUrl,                        // Production Render URL - PRIORITIZED
+          'http://192.168.0.136:5000/api',  // Local PC IP for development
+          'http://10.0.2.2:5000/api',       // Android emulator
+          'http://localhost:5000/api',      // Local fallback
+        ];
       }
     } catch (_) {}
-    // Windows/macOS/Linux desktops and iOS simulator default to localhost
-    return 'http://localhost:5000/api';
+    
+    // Desktop platforms
+    return [
+      renderUrl,                          // Production Render URL
+      'http://localhost:5000/api'         // Local development
+    ];
+  }
+
+  // Determines the base URL depending on platform or a compile-time override
+  static String get baseUrl {
+    return possibleUrls.first; // Start with the first URL
   }
   
   static ApiService? _instance;
@@ -30,6 +51,7 @@ class ApiService {
   bool _isReconnecting = false;
   int _retryCount = 0;
   static const int maxRetries = 5;
+  String _workingBaseUrl = '';
 
   ApiService._internal() {
     _initializeDio();
@@ -41,12 +63,13 @@ class ApiService {
   }
 
   void _initializeDio() {
+    final currentBaseUrl = _workingBaseUrl.isNotEmpty ? _workingBaseUrl : baseUrl;
     print('=== API Service Debug ===');
-    print('API Base URL: $baseUrl');
+    print('API Base URL: $currentBaseUrl');
     
     _dio = Dio(
       BaseOptions(
-        baseUrl: baseUrl,
+        baseUrl: currentBaseUrl,
         connectTimeout: const Duration(seconds: 15),  // Increased timeout
         receiveTimeout: const Duration(seconds: 20),  // Increased timeout
         sendTimeout: const Duration(seconds: 20),     // Increased timeout
@@ -147,9 +170,50 @@ class ApiService {
     _initializeDio();
   }
 
+  // Method to find working backend URL by testing all possibilities
+  Future<String?> _findWorkingUrl() async {
+    if (_workingBaseUrl.isNotEmpty) {
+      return _workingBaseUrl; // Already found a working URL
+    }
+
+    print('Testing connection to possible backend URLs...');
+    
+    for (String url in possibleUrls) {
+      try {
+        print('Testing URL: $url');
+        final testDio = Dio(BaseOptions(
+          baseUrl: url,
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ));
+        
+        final response = await testDio.get('/health');
+        if (response.statusCode == 200) {
+          print('✓ Successfully connected to: $url');
+          _workingBaseUrl = url;
+          return url;
+        }
+      } catch (e) {
+        print('✗ Failed to connect to $url: $e');
+        continue;
+      }
+    }
+    
+    print('No working backend URL found');
+    return null;
+  }
+
   // Method to check if backend is reachable
   Future<bool> isBackendReachable() async {
     try {
+      // First try to find a working URL if we don't have one
+      if (_workingBaseUrl.isEmpty) {
+        final workingUrl = await _findWorkingUrl();
+        if (workingUrl != null) {
+          _initializeDio();
+        }
+      }
+      
       await _dio.get('/health', options: Options(
         sendTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
@@ -573,6 +637,15 @@ class ApiService {
   // Test method to verify API service is working
   Future<bool> testApiConnection() async {
     try {
+      // First try to find a working URL
+      final workingUrl = await _findWorkingUrl();
+      if (workingUrl != null) {
+        // Reinitialize Dio with the working URL
+        _initializeDio();
+        return true;
+      }
+      
+      // Fallback to current URL test
       final response = await _dio.get('/health', options: Options(
         sendTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),

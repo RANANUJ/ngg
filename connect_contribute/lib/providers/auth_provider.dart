@@ -33,18 +33,30 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      print('Starting login process...');
       final response = await _apiService.login(email, password);
+      
       _token = response['token'];
       _user = User.fromJson(response['user']);
       
+      print('Login successful, user: ${_user?.name}, type: ${_user?.userType}');
+      
+      // Save to preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', _token!);
       await prefs.setString('user_email', _user!.email);
       
       _isLoading = false;
+      print('Auth state updated: isAuthenticated=$isAuthenticated');
       notifyListeners();
+      
+      // Give more time for state propagation
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      print('Login completed successfully');
       return true;
     } catch (e) {
+      print('Login failed: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
@@ -64,23 +76,35 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      print('Starting signup process...');
       final response = await _apiService.signup(
         name,
         email,
         password,
         userType,
       );
+      
       _token = response['token'];
       _user = User.fromJson(response['user']);
       
+      print('Signup successful, user: ${_user?.name}, type: ${_user?.userType}');
+      
+      // Save to preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', _token!);
       await prefs.setString('user_email', _user!.email);
       
       _isLoading = false;
+      print('Auth state updated before notifyListeners: isAuthenticated=$isAuthenticated');
       notifyListeners();
+      
+      // Add a small delay to ensure state is propagated
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      print('Auth state updated, isAuthenticated: $isAuthenticated');
       return true;
     } catch (e) {
+      print('Signup failed: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
@@ -160,13 +184,16 @@ class AuthProvider extends ChangeNotifier {
         _token = token;
         
         try {
-          // Verify token by getting user profile
-          final response = await _apiService.getProfile();
+          // Add timeout for the profile verification
+          final response = await Future.any([
+            _apiService.getProfile(),
+            Future.delayed(const Duration(seconds: 8), () => throw Exception('Profile verification timeout'))
+          ]);
           _user = User.fromJson(response);
           print('Auth state initialized successfully for user: ${_user?.name}');
         } catch (e) {
           print('Token verification failed: $e');
-          // Token is invalid, clear it
+          // Token is invalid or backend unreachable, clear it
           _user = null;
           _token = null;
           await prefs.remove('auth_token');

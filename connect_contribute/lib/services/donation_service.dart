@@ -409,7 +409,7 @@ class _EnhancedDonationDialogState extends State<EnhancedDonationDialog>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '• Daily UPI limit: ₹1,00,000\n• Bank limits may vary (₹10,000-₹25,000)\n• For large amounts, try multiple smaller payments\n• Ensure sufficient balance before payment',
+                  '• Daily UPI limit: ₹1,00,0000\n• Bank limits may vary (₹10,000-₹25,000)\n• For large amounts, try multiple smaller payments\n• Ensure sufficient balance before payment\n\n💡 App Compatibility Tips:\n• Flipkart UPI & BHIM work most reliably\n• If Google Pay shows "limit error", try different app\n• If Paytm shows "risk alert", use Flipkart UPI\n• PhonePe may need app update for best results',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.blue[600],
