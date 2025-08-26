@@ -20,23 +20,21 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       print('Splash: Starting app initialization...');
       
+      // Show splash screen for minimum duration
+      await Future.delayed(const Duration(seconds: 2));
+      
       // Initialize auth state with timeout
       await Future.any([
         context.read<AuthProvider>().initializeAuth(),
-        Future.delayed(const Duration(seconds: 10)) // 10 second timeout
+        Future.delayed(const Duration(seconds: 8)) // 8 second timeout
       ]);
       
       if (mounted) {
         final authProvider = context.read<AuthProvider>();
         print('Splash: Auth check - isAuthenticated: ${authProvider.isAuthenticated}, user: ${authProvider.user?.name}');
         
-        // Wait for splash duration only if user is authenticated
-        if (authProvider.isAuthenticated) {
-          await Future.delayed(const Duration(seconds: 2));
-        } else {
-          // For unauthenticated users (like after logout), show splash briefly then navigate
-          await Future.delayed(const Duration(milliseconds: 500));
-        }
+        // Add small delay to ensure auth state is stable
+        await Future.delayed(const Duration(milliseconds: 500));
         
         // The router will handle navigation automatically based on auth state
         print('Splash: Auth initialization complete, router will handle navigation');

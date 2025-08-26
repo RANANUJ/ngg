@@ -13,31 +13,31 @@ class ApiService {
     }
     
     // Check for Render deployment URL (update this with your actual Render URL)
-    const String renderUrl = 'https://connect-contribute-backend.onrender.com/api';
+    const String renderUrl = 'https://ngg-2yx3.onrender.com/api';
     
     if (kIsWeb) {
       return [
-        renderUrl,                          // Try Render first for web
-        'http://localhost:5000/api'         // Local fallback
+        'http://localhost:5000/api',        // Local development first for testing
+        renderUrl,                          // Render production URL fallback
       ];
     }
     
-    // For mobile devices, try Render first, then local IPs
+    // For mobile devices, try local first for development, then Render for production
     try {
       if (Platform.isAndroid || Platform.isIOS) {
         return [
-          renderUrl,                        // Production Render URL - PRIORITIZED
-          'http://192.168.0.136:5000/api',  // Local PC IP for development
+          'http://localhost:5000/api',      // Local development first
+          'http://10.201.232.249:5000/api', // Local PC IP for development (updated)
           'http://10.0.2.2:5000/api',       // Android emulator
-          'http://localhost:5000/api',      // Local fallback
+          renderUrl,                        // Production Render URL fallback
         ];
       }
     } catch (_) {}
     
     // Desktop platforms
     return [
-      renderUrl,                          // Production Render URL
-      'http://localhost:5000/api'         // Local development
+      'http://localhost:5000/api',        // Local development first
+      renderUrl,                          // Production Render URL fallback
     ];
   }
 
@@ -395,9 +395,13 @@ class ApiService {
   // Fundraising Campaign methods
   Future<Map<String, dynamic>> createCampaign(Map<String, dynamic> data) async {
     try {
+      print('API: Creating campaign with data: $data');
       final response = await _dio.post('/campaigns', data: data);
+      print('API: createCampaign response status: ${response.statusCode}');
+      print('API: createCampaign response data: ${response.data}');
       return response.data;
     } catch (e) {
+      print('API: createCampaign error: $e');
       rethrow;
     }
   }
@@ -451,18 +455,37 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> getUserCampaigns() async {
     try {
+      print('API: Calling getUserCampaigns /campaigns');
       final response = await _dio.get('/campaigns');
-      return List<Map<String, dynamic>>.from(response.data);
+      print('API: getUserCampaigns response status: ${response.statusCode}');
+      print('API: getUserCampaigns response data: ${response.data}');
+      
+      if (response.statusCode == 200) {
+        final campaigns = List<Map<String, dynamic>>.from(response.data);
+        print('API: getUserCampaigns parsed ${campaigns.length} campaigns');
+        return campaigns;
+      } else {
+        print('API: getUserCampaigns failed with status: ${response.statusCode}');
+        return [];
+      }
     } catch (e) {
-      rethrow;
+      print('API: getUserCampaigns error: $e');
+      // Return empty list instead of throwing error to prevent UI crash
+      return [];
     }
   }
 
   Future<List<Map<String, dynamic>>> getAllCampaigns() async {
     try {
+      print('API: Calling getAllCampaigns /campaigns/all');
       final response = await _dio.get('/campaigns/all');
-      return List<Map<String, dynamic>>.from(response.data);
+      print('API: getAllCampaigns response status: ${response.statusCode}');
+      print('API: getAllCampaigns response data: ${response.data}');
+      final campaigns = List<Map<String, dynamic>>.from(response.data);
+      print('API: getAllCampaigns parsed ${campaigns.length} campaigns');
+      return campaigns;
     } catch (e) {
+      print('API: getAllCampaigns error: $e');
       rethrow;
     }
   }

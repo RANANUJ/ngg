@@ -34,18 +34,51 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final campaigns = await ApiService.instance.getUserCampaigns();
+      // Clear existing data first to force fresh fetch
+      setState(() {
+        _campaigns = [];
+        _donationRequests = [];
+      });
+      
+      // Temporarily try both endpoints to debug
+      try {
+        final campaigns = await ApiService.instance.getUserCampaigns();
+        print('User campaigns: $campaigns');
+        setState(() {
+          _campaigns = campaigns;
+        });
+      } catch (e) {
+        print('User campaigns failed: $e');
+        // Fallback to all campaigns if user campaigns fail
+        try {
+          final allCampaigns = await ApiService.instance.getAllCampaigns();
+          print('All campaigns: $allCampaigns');
+          setState(() {
+            _campaigns = allCampaigns;
+          });
+        } catch (e2) {
+          print('All campaigns also failed: $e2');
+        }
+      }
+      
       final donationRequests = await ApiService.instance.getUserDonationRequests();
-      print('Fetched campaigns: ' + campaigns.toString());
       print('Fetched donation requests: ' + donationRequests.toString());
       setState(() {
-        _campaigns = campaigns;
         _donationRequests = donationRequests;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
       print('Error fetching data: $e');
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading campaigns: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -701,6 +734,19 @@ class _NGODashboardScreenState extends State<NGODashboardScreen>
                 icon: const Icon(Icons.add, size: 18),
                 label: Text(
                   'New',
+                  style: GoogleFonts.poppins(
+                    color: const Color(0xFF6A11CB),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _fetchData,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(
+                  'Refresh',
                   style: GoogleFonts.poppins(
                     color: const Color(0xFF6A11CB),
                     fontWeight: FontWeight.w600,

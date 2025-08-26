@@ -75,23 +75,21 @@ class _LoginScreenState extends State<LoginScreen> {
           // Show success message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Login successful!'),
+              content: Text('Login successful! Redirecting...'),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
+              duration: Duration(milliseconds: 800),
             ),
           );
           
-          // Longer delay to ensure auth state is fully updated and router can process
-          await Future.delayed(const Duration(milliseconds: 800));
-          
-          // Check auth state again after delay
-          print('Auth state after delay - isAuthenticated: ${authProvider.isAuthenticated}, user: ${authProvider.user?.name}');
-          
-          // Manual navigation as the primary method (router redirect as backup)
-          if (mounted && authProvider.isAuthenticated) {
-            final dashboardRoute = user?.userType == 'NGO' ? '/ngo-dashboard' : '/volunteer-dashboard';
-            print('Navigating to: $dashboardRoute');
-            context.go(dashboardRoute);
+          // Direct navigation without any delays to prevent router interference
+          if (mounted && authProvider.isAuthenticated && user != null) {
+            final dashboardRoute = user.userType == 'NGO' ? '/ngo-dashboard' : '/volunteer-dashboard';
+            print('Immediately navigating to: $dashboardRoute');
+            
+            // Use context.go with replace to prevent back navigation to login
+            if (mounted) {
+              context.go(dashboardRoute);
+            }
           }
           
         } else {
@@ -266,6 +264,31 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
 
                 const SizedBox(height: 24),
+
+                // New to the app link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "New to the app? ",
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        context.go('/onboarding');
+                      },
+                      child: Text(
+                        'See How It Works',
+                        style: TextStyle(
+                          color: AppTheme.lightTheme.colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
 
                 // Sign Up Link
                 Row(

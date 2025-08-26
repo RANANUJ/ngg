@@ -6,15 +6,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import os
 from bson import ObjectId
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
-# Configuration
-
-app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
-app.config['JWT_SECRET_KEY'] = 'your-jwt-secret-key-change-this-in-production'
+# Configuration - Use environment variables when available
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key-change-this-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-app.config['MONGO_URI'] = 'mongodb://localhost:27017/connect_contribute'
+app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/connect_contribute')
 
 # Initialize extensions
 CORS(app, resources={
@@ -26,6 +29,13 @@ CORS(app, resources={
 })
 jwt = JWTManager(app)
 mongo = PyMongo(app)
+
+# Add request logging middleware
+@app.before_request
+def log_request():
+    print(f"📨 {request.method} {request.path} - From: {request.remote_addr}")
+    if request.is_json:
+        print(f"📄 Data: {request.get_json()}")
 
 # User model helper functions
 def serialize_user(user):
@@ -469,18 +479,23 @@ def health_check():
 @app.route('/api/auth/signup', methods=['POST'])
 def signup():
     try:
+        print("🔥 SIGNUP REQUEST RECEIVED")
         data = request.get_json()
+        print(f"📧 Data received: {data}")
         
         # Validate required fields
         required_fields = ['name', 'email', 'password', 'user_type']
         for field in required_fields:
             if not data.get(field):
+                print(f"❌ Missing field: {field}")
                 return jsonify({'error': f'{field} is required'}), 422
         
         name = data['name'].strip()
         email = data['email'].strip().lower()
         password = data['password']
         user_type = data['user_type']
+        
+        print(f"👤 Creating user: {name} ({email}) - Type: {user_type}")
         
         # Validate user type
         if user_type not in ['Individual', 'NGO']:
@@ -489,6 +504,7 @@ def signup():
         # Check if email already exists
         existing_user = get_user_by_email(email)
         if existing_user:
+            print(f"❌ Email already exists: {email}")
             return jsonify({'error': 'Email already exists'}), 409
         
         # Validate password length
@@ -496,7 +512,9 @@ def signup():
             return jsonify({'error': 'Password must be at least 6 characters'}), 422
         
         # Create user
+        print("💾 Creating user in database...")
         user = create_user(name, email, password, user_type)
+        print(f"✅ User created with ID: {user['_id']}")
         
         # Serialize user for JSON response
         serialized_user = serialize_user(user)
@@ -515,23 +533,34 @@ def signup():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     try:
+        print("🔑 LOGIN REQUEST RECEIVED")
         data = request.get_json()
+        print(f"📧 Login data received: {data}")
         
         # Validate required fields
         if not data.get('email') or not data.get('password'):
+            print("❌ Missing email or password")
             return jsonify({'error': 'Email and password are required'}), 422
         
         email = data['email'].strip().lower()
         password = data['password']
         
+        print(f"🔍 Looking for user: {email}")
+        
         # Get user by email
         user = get_user_by_email(email)
         if not user:
+            print(f"❌ User not found: {email}")
             return jsonify({'error': 'Invalid email or password'}), 401
+        
+        print(f"👤 User found: {user['name']} ({user['email']})")
         
         # Check password
         if not check_password_hash(user['password'], password):
+            print("❌ Password doesn't match")
             return jsonify({'error': 'Invalid email or password'}), 401
+        
+        print("✅ Password matches! Login successful")
         
         # Serialize user for JSON response
         serialized_user = serialize_user(user)
@@ -545,6 +574,7 @@ def login():
         }), 200
         
     except Exception as e:
+        print(f"💥 Login error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/auth/profile', methods=['GET'])
@@ -956,4 +986,6 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    print("🚀 Starting Flask backend server...")
+    print(f"📊 MongoDB URI: {app.config['MONGO_URI'][:50]}...")
     app.run(debug=True, host='0.0.0.0', port=5000) 

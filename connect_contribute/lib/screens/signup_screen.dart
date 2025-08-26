@@ -113,20 +113,21 @@ class _SignupScreenState extends State<SignupScreen> {
           // Show success message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Signup successful!'),
+              content: Text('Signup successful! Redirecting...'),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 1),
+              duration: Duration(milliseconds: 800),
             ),
           );
           
-          // Small delay to ensure auth state is fully updated
-          await Future.delayed(const Duration(milliseconds: 500));
-          
-          // Manual navigation as fallback if router doesn't redirect
-          if (mounted) {
-            final dashboardRoute = user?.userType == 'NGO' ? '/ngo-dashboard' : '/volunteer-dashboard';
-            print('Manually navigating to: $dashboardRoute');
-            context.go(dashboardRoute);
+          // Direct navigation without delays to prevent router interference
+          if (mounted && authProvider.isAuthenticated && user != null) {
+            final dashboardRoute = user.userType == 'NGO' ? '/ngo-dashboard' : '/volunteer-dashboard';
+            print('Immediately navigating to: $dashboardRoute');
+            
+            // Use context.go to navigate directly
+            if (mounted) {
+              context.go(dashboardRoute);
+            }
           }
           
         } else {

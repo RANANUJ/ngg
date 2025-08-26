@@ -290,7 +290,7 @@ def health_check():
             'environment': os.environ.get('FLASK_ENV', 'development'),
             'mongo_uri_set': 'cluster0.2dqh6mp.mongodb.net' in mongo_uri,
             'timestamp': datetime.utcnow().isoformat(),
-            'version': '2.0.0'
+            'version': '2.1.0'
         }), 200
     except Exception as e:
         return jsonify({

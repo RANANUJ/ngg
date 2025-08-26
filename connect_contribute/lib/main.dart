@@ -33,10 +33,17 @@ class ConnectContributeApp extends StatelessWidget {
             redirect: (context, state) {
               final isLoggedIn = authProvider.isAuthenticated;
               final isInitialized = authProvider.isInitialized;
+              final isAuthenticating = authProvider.isAuthenticating;
               final currentPath = state.matchedLocation;
               
-              print('Router redirect check: isLoggedIn=$isLoggedIn, isInitialized=$isInitialized, path=$currentPath');
+              print('Router redirect check: isLoggedIn=$isLoggedIn, isInitialized=$isInitialized, isAuthenticating=$isAuthenticating, path=$currentPath');
               print('User data: ${authProvider.user?.name}, type: ${authProvider.user?.userType}');
+              
+              // Don't redirect if currently authenticating to prevent flashing
+              if (isAuthenticating) {
+                print('Authentication in progress, no redirects');
+                return null;
+              }
               
               // Don't redirect until auth is initialized
               if (!isInitialized) {
@@ -50,9 +57,9 @@ class ConnectContributeApp extends StatelessWidget {
               // After initialization, handle navigation
               if (isLoggedIn && authProvider.user != null) {
                 print('User is authenticated with user data available');
-                // User is authenticated - only redirect from auth screens and splash
+                // User is authenticated - redirect from auth screens and splash to dashboard
                 if (['/login', '/signup', '/onboarding', '/'].contains(currentPath)) {
-                  // Redirect to appropriate dashboard
+                  // Redirect to appropriate dashboard based on user type
                   final user = authProvider.user!;
                   print('Redirecting authenticated user from $currentPath to dashboard. User type: ${user.userType}');
                   if (user.userType == 'NGO') {
@@ -68,19 +75,24 @@ class ConnectContributeApp extends StatelessWidget {
                 return null;
               } else {
                 print('User is NOT authenticated or user data not available');
-                // User is not authenticated - redirect appropriately
+                // User is not authenticated - handle redirects carefully
                 if (['/ngo-dashboard', '/volunteer-dashboard', '/create-fundraising', '/create-donation-request', '/campaign-details', '/donation-request-details'].contains(currentPath)) {
-                  print('User trying to access protected route $currentPath, redirecting to onboarding');
-                  return '/onboarding';
+                  print('User trying to access protected route $currentPath, redirecting to login');
+                  return '/login'; // Redirect to login for protected routes
                 }
-                // If on splash screen and not authenticated, go to onboarding
+                // If on splash screen and not authenticated - ALWAYS go to login now
                 if (currentPath == '/') {
-                  print('User on splash screen and not authenticated, going to onboarding');
-                  return '/onboarding';
+                  print('User on splash screen and not authenticated, redirecting to login');
+                  return '/login'; // Always redirect to login, let users choose to see onboarding
                 }
-                // Allow access to auth screens
-                print('User on auth screen $currentPath, allowing access');
-                return null;
+                // Allow access to auth screens (login, signup, onboarding) - NO REDIRECTS
+                if (['/login', '/signup', '/onboarding'].contains(currentPath)) {
+                  print('User on auth screen $currentPath, allowing access');
+                  return null;
+                }
+                // For any other route, redirect to login
+                print('User on unknown route $currentPath, redirecting to login');
+                return '/login';
               }
             },
             routes: [

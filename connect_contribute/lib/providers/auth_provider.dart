@@ -11,6 +11,8 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _isInitialized = false;
+  bool _isAuthenticating = false; // Add this flag to prevent router interference
+  bool _isFirstTimeUser = false; // Track if this is a first-time user - default to false (returning user)
 
   // Getters
   User? get user => _user;
@@ -19,6 +21,8 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isAuthenticated => _token != null && _user != null;
   bool get isInitialized => _isInitialized;
+  bool get isAuthenticating => _isAuthenticating;
+  bool get isFirstTimeUser => _isFirstTimeUser;
 
   // Clear error
   void clearError() {
@@ -29,6 +33,7 @@ class AuthProvider extends ChangeNotifier {
   // Login
   Future<bool> login(String email, String password) async {
     _isLoading = true;
+    _isAuthenticating = true; // Set authentication flag
     _error = null;
     notifyListeners();
 
@@ -46,12 +51,18 @@ class AuthProvider extends ChangeNotifier {
       await prefs.setString('auth_token', _token!);
       await prefs.setString('user_email', _user!.email);
       
-      _isLoading = false;
       print('Auth state updated: isAuthenticated=$isAuthenticated');
+      
+      // Set loading false but keep authenticating true briefly to prevent router flash
+      _isLoading = false;
       notifyListeners();
       
-      // Give more time for state propagation
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Wait longer to ensure smooth transition and prevent onboarding flash
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Clear authentication flag to allow router to redirect
+      _isAuthenticating = false;
+      notifyListeners();
       
       print('Login completed successfully');
       return true;
@@ -59,6 +70,7 @@ class AuthProvider extends ChangeNotifier {
       print('Login failed: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
+      _isAuthenticating = false; // Clear authentication flag
       notifyListeners();
       return false;
     }
@@ -72,6 +84,7 @@ class AuthProvider extends ChangeNotifier {
     String userType,
   ) async {
     _isLoading = true;
+    _isAuthenticating = true; // Set authentication flag
     _error = null;
     notifyListeners();
 
@@ -94,19 +107,26 @@ class AuthProvider extends ChangeNotifier {
       await prefs.setString('auth_token', _token!);
       await prefs.setString('user_email', _user!.email);
       
-      _isLoading = false;
       print('Auth state updated before notifyListeners: isAuthenticated=$isAuthenticated');
+      
+      // Set loading false but keep authenticating true briefly to prevent router flash
+      _isLoading = false;
       notifyListeners();
       
-      // Add a small delay to ensure state is propagated
-      await Future.delayed(const Duration(milliseconds: 100));
+      // Wait longer to ensure smooth transition and prevent onboarding flash
+      await Future.delayed(const Duration(milliseconds: 500));
       
-      print('Auth state updated, isAuthenticated: $isAuthenticated');
+      // Clear authentication flag to allow router to redirect
+      _isAuthenticating = false;
+      notifyListeners();
+      
+      print('Signup completed successfully, isAuthenticated: $isAuthenticated');
       return true;
     } catch (e) {
       print('Signup failed: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
+      _isAuthenticating = false; // Clear authentication flag
       notifyListeners();
       return false;
     }
@@ -115,9 +135,14 @@ class AuthProvider extends ChangeNotifier {
   // Logout
   Future<void> logout() async {
     try {
+      print('Starting logout process...');
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('auth_token');
       await prefs.remove('user_email');
+      
+      // Ensure user is marked as NOT first-time after logout
+      await prefs.setBool('has_opened_before', true);
+      print('Cleared shared preferences');
     } catch (e) {
       print('Error clearing preferences: $e');
     }
@@ -125,7 +150,13 @@ class AuthProvider extends ChangeNotifier {
     _user = null;
     _token = null;
     _error = null;
+    _isFirstTimeUser = false; // Explicitly set to false - user is no longer first-time after logout
+    print('Cleared auth state - isAuthenticated: $isAuthenticated, isFirstTimeUser: $_isFirstTimeUser');
     notifyListeners();
+    
+    // Small delay to ensure state is updated and router properly redirects
+    await Future.delayed(const Duration(milliseconds: 200));
+    print('Logout completed');
   }
 
   // Get user profile
@@ -177,6 +208,19 @@ class AuthProvider extends ChangeNotifier {
     try {
       print('Initializing auth state...');
       final prefs = await SharedPreferences.getInstance();
+      
+      // Check if user has opened the app before - this determines first-time vs returning user
+      final hasOpenedBefore = prefs.getBool('has_opened_before') ?? false;
+      _isFirstTimeUser = !hasOpenedBefore;
+      
+      print('First time user check: hasOpenedBefore=$hasOpenedBefore, isFirstTimeUser=$_isFirstTimeUser');
+      
+      if (!hasOpenedBefore) {
+        // Mark that the user has opened the app for the first time
+        await prefs.setBool('has_opened_before', true);
+        print('Marked user as having opened the app before');
+      }
+      
       final token = prefs.getString('auth_token');
       
       if (token != null) {
@@ -209,6 +253,7 @@ class AuthProvider extends ChangeNotifier {
       _token = null;
     } finally {
       _isInitialized = true;
+      print('Auth initialization complete: isFirstTimeUser=$_isFirstTimeUser, isAuthenticated=$isAuthenticated');
       notifyListeners();
     }
   }
@@ -226,6 +271,7 @@ class AuthProvider extends ChangeNotifier {
     _token = null;
     _error = null;
     _isInitialized = false;
+    _isFirstTimeUser = true; // Reset to first-time user
     notifyListeners();
   }
 }
