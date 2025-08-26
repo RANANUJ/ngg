@@ -92,18 +92,32 @@ def update_user(user_id, data):
 # Fundraising Campaign model helper functions
 def serialize_campaign(campaign):
     """Convert campaign object to JSON-serializable format"""
-    if not campaign:
+    try:
+        if not campaign:
+            return None
+        
+        print(f"[DEBUG] Serializing campaign: {campaign.get('title', 'N/A')}")
+        
+        campaign['_id'] = str(campaign['_id'])
+        campaign['created_by'] = str(campaign['created_by'])
+        
+        if campaign.get('created_at'):
+            campaign['created_at'] = campaign['created_at'].isoformat()
+        if campaign.get('updated_at'):
+            campaign['updated_at'] = campaign['updated_at'].isoformat()
+        
+        # Handle end_date serialization
+        if campaign.get('end_date'):
+            if isinstance(campaign['end_date'], datetime):
+                campaign['end_date'] = campaign['end_date'].isoformat()
+        
+        print(f"[DEBUG] Serialized campaign successfully: {campaign.get('title', 'N/A')}")
+        return campaign
+    except Exception as e:
+        print(f"[DEBUG] Error serializing campaign: {e}")
+        import traceback
+        print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
         return None
-    
-    campaign['_id'] = str(campaign['_id'])
-    campaign['created_by'] = str(campaign['created_by'])
-    
-    if campaign.get('created_at'):
-        campaign['created_at'] = campaign['created_at'].isoformat()
-    if campaign.get('updated_at'):
-        campaign['updated_at'] = campaign['updated_at'].isoformat()
-    
-    return campaign
 
 def create_campaign(data, user_id):
     """Create a new fundraising campaign"""
@@ -126,8 +140,20 @@ def create_campaign(data, user_id):
 
 def get_campaigns_by_user(user_id):
     """Get all campaigns created by a specific user"""
-    campaigns = list(mongo.db.campaigns.find({'created_by': ObjectId(user_id)}))
-    return [serialize_campaign(campaign) for campaign in campaigns]
+    try:
+        print(f"[DEBUG] get_campaigns_by_user called with user_id={user_id}, type={type(user_id)}")
+        user_object_id = ObjectId(user_id)
+        print(f"[DEBUG] Converted to ObjectId: {user_object_id}")
+        campaigns = list(mongo.db.campaigns.find({'created_by': user_object_id}))
+        print(f"[DEBUG] Found {len(campaigns)} campaigns in database")
+        serialized_campaigns = [serialize_campaign(campaign) for campaign in campaigns]
+        print(f"[DEBUG] Serialized {len(serialized_campaigns)} campaigns")
+        return serialized_campaigns
+    except Exception as e:
+        print(f"[DEBUG] Error in get_campaigns_by_user: {e}")
+        import traceback
+        print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
+        return []
 
 def get_all_active_campaigns():
     """Get all active campaigns"""
@@ -251,18 +277,27 @@ def health_check():
     try:
         # Test database connection
         mongo.db.admin.command('ping')
+        
+        # Get some database info
+        db_name = mongo.db.name
+        mongo_uri = app.config.get('MONGO_URI', 'Not set')
+        
         return jsonify({
             'status': 'healthy',
             'message': 'Production API is running with MongoDB Atlas',
             'database': 'MongoDB Atlas',
+            'database_name': db_name,
+            'environment': os.environ.get('FLASK_ENV', 'development'),
+            'mongo_uri_set': 'cluster0.2dqh6mp.mongodb.net' in mongo_uri,
             'timestamp': datetime.utcnow().isoformat(),
             'version': '2.0.0'
         }), 200
     except Exception as e:
         return jsonify({
             'status': 'unhealthy',
-            'message': 'Database connection failed',
-            'error': str(e),
+            'message': f'Database connection failed: {str(e)}',
+            'database': 'connection_failed',
+            'environment': os.environ.get('FLASK_ENV', 'development'),
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
@@ -390,11 +425,15 @@ def get_user_campaigns():
     try:
         user_id = get_jwt_identity()
         print(f"[DEBUG] /api/campaigns called by user_id={user_id}")
+        print(f"[DEBUG] About to call get_campaigns_by_user with user_id={user_id}")
         campaigns = get_campaigns_by_user(user_id)
+        print(f"[DEBUG] get_campaigns_by_user returned: {campaigns}")
         print(f"[DEBUG] /api/campaigns returning {len(campaigns)} campaigns")
         return jsonify(campaigns), 200
     except Exception as e:
         print(f"[DEBUG] Error in /api/campaigns: {e}")
+        import traceback
+        print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/campaigns/all', methods=['GET'])
