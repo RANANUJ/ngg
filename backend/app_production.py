@@ -29,32 +29,62 @@ CORS(app, resources={
 jwt = JWTManager(app)
 mongo = PyMongo(app)
 
+# Test MongoDB connection at startup
+print("🔗 Testing MongoDB connection...")
+try:
+    mongo.db.admin.command('ping')
+    print("✅ MongoDB Atlas connection successful!")
+    print(f"📊 Database name: {mongo.db.name}")
+except Exception as e:
+    print(f"❌ MongoDB connection failed: {e}")
+    print(f"🔗 MONGO_URI set: {'MONGO_URI' in os.environ}")
+    if 'MONGO_URI' in os.environ:
+        mongo_uri = os.environ.get('MONGO_URI')
+        # Don't print the full URI for security, just check if it looks right
+        has_cluster = 'cluster' in mongo_uri.lower()
+        has_mongodb = mongo_uri.startswith('mongodb')
+        print(f"🔗 URI format check - starts with mongodb: {has_mongodb}, contains cluster: {has_cluster}")
+    raise e
+
 # User model helper functions
 def serialize_user(user):
     """Convert user object to JSON-serializable format"""
     if not user:
+        print("⚠️ Warning: serialize_user called with None user")
         return None
     
-    # Convert _id to string
-    user['_id'] = str(user['_id'])
+    print(f"📦 Serializing user: {user.get('name', 'Unknown')}")
     
-    # Convert datetime fields to ISO format strings
-    if user.get('created_at'):
-        user['created_at'] = user['created_at'].isoformat()
-    if user.get('updated_at'):
-        user['updated_at'] = user['updated_at'].isoformat()
-    
-    # Remove password from response
-    user.pop('password', None)
-    
-    return user
+    try:
+        # Convert _id to string
+        if '_id' in user:
+            user['_id'] = str(user['_id'])
+        
+        # Convert datetime fields to ISO format strings
+        if user.get('created_at'):
+            if hasattr(user['created_at'], 'isoformat'):
+                user['created_at'] = user['created_at'].isoformat()
+        if user.get('updated_at'):
+            if hasattr(user['updated_at'], 'isoformat'):
+                user['updated_at'] = user['updated_at'].isoformat()
+        
+        # Remove password from response
+        user.pop('password', None)
+        
+        print(f"✅ User serialized successfully")
+        return user
+    except Exception as e:
+        print(f"❌ Error serializing user: {e}")
+        raise e
 
 def create_user(name, email, password, user_type):
     """Create a new user in the database"""
+    print(f"🔧 Creating user: {name} ({email}) - Type: {user_type}")
+    
     hashed_password = generate_password_hash(password)
     user = {
-        'name': name,
-        'email': email,
+        'name': name.strip(),
+        'email': email.lower().strip(),  # Normalize email to lowercase
         'password': hashed_password,
         'user_type': user_type,
         'phone': None,
@@ -63,13 +93,25 @@ def create_user(name, email, password, user_type):
         'created_at': datetime.utcnow(),
         'updated_at': datetime.utcnow()
     }
-    result = mongo.db.users.insert_one(user)
-    user['_id'] = result.inserted_id
-    return user
+    
+    print(f"💾 Inserting user into MongoDB...")
+    try:
+        result = mongo.db.users.insert_one(user)
+        user['_id'] = result.inserted_id
+        print(f"✅ User created successfully with ID: {result.inserted_id}")
+        return user
+    except Exception as e:
+        print(f"❌ Failed to insert user into MongoDB: {e}")
+        raise e
 
 def get_user_by_email(email):
     """Get user by email"""
-    user = mongo.db.users.find_one({'email': email})
+    print(f"🔍 Searching for user with email: {email}")
+    user = mongo.db.users.find_one({'email': email.lower().strip()})  # Normalize email
+    if user:
+        print(f"✅ User found: {user.get('name', 'Unknown')}")
+    else:
+        print(f"❌ No user found with email: {email}")
     return user
 
 def get_user_by_id(user_id):
@@ -305,33 +347,59 @@ def health_check():
 @app.route('/api/auth/signup', methods=['POST'])
 def signup():
     try:
+        print("🔥 SIGNUP REQUEST RECEIVED")
         data = request.get_json()
+        print(f"📧 Request data: {data}")
         
         # Validate required fields
         required_fields = ['name', 'email', 'password', 'user_type']
         for field in required_fields:
             if not data.get(field):
+                print(f"❌ Missing required field: {field}")
                 return jsonify({'error': f'{field} is required'}), 422
         
+        name = data['name'].strip()
+        email = data['email'].strip().lower()  # Normalize email
+        password = data['password']
+        user_type = data['user_type']
+        
+        print(f"👤 Processing signup for: {name} ({email}) - Type: {user_type}")
+        
+        # Validate user type
+        if user_type not in ['Individual', 'NGO']:
+            print(f"❌ Invalid user type: {user_type}")
+            return jsonify({'error': 'user_type must be Individual or NGO'}), 422
+        
+        # Validate email format
+        if '@' not in email or '.' not in email:
+            print(f"❌ Invalid email format: {email}")
+            return jsonify({'error': 'Invalid email format'}), 422
+        
+        # Validate password length
+        if len(password) < 6:
+            print(f"❌ Password too short")
+            return jsonify({'error': 'Password must be at least 6 characters'}), 422
+        
         # Check if user already exists
-        existing_user = get_user_by_email(data['email'])
+        print(f"🔍 Checking if user exists...")
+        existing_user = get_user_by_email(email)
         if existing_user:
+            print(f"❌ User already exists with email: {email}")
             return jsonify({'error': 'User already exists'}), 409
         
         # Create new user
-        user = create_user(
-            data['name'],
-            data['email'],
-            data['password'],
-            data['user_type']
-        )
+        print(f"💾 Creating new user...")
+        user = create_user(name, email, password, user_type)
         
         # Serialize user for response
+        print(f"📦 Serializing user data...")
         user_data = serialize_user(user)
         
         # Create access token
+        print(f"🔐 Creating access token...")
         access_token = create_access_token(identity=str(user['_id']))
         
+        print(f"✅ Signup successful for user: {name}")
         return jsonify({
             'message': 'User created successfully',
             'token': access_token,
@@ -339,33 +407,48 @@ def signup():
         }), 201
         
     except Exception as e:
-        print(f"Signup error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        print(f"❌ Signup error: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     try:
+        print("🔐 LOGIN REQUEST RECEIVED")
         data = request.get_json()
+        print(f"📧 Login attempt for email: {data.get('email', 'Unknown')}")
         
         # Validate required fields
         if not data.get('email') or not data.get('password'):
+            print("❌ Missing email or password")
             return jsonify({'error': 'Email and password are required'}), 422
         
+        email = data['email'].strip().lower()  # Normalize email
+        password = data['password']
+        
         # Find user
-        user = get_user_by_email(data['email'])
+        print(f"🔍 Looking for user: {email}")
+        user = get_user_by_email(email)
         if not user:
+            print(f"❌ User not found: {email}")
             return jsonify({'error': 'Invalid credentials'}), 401
         
         # Check password
-        if not check_password_hash(user['password'], data['password']):
+        print(f"🔑 Checking password for user: {user.get('name', 'Unknown')}")
+        if not check_password_hash(user['password'], password):
+            print(f"❌ Invalid password for user: {email}")
             return jsonify({'error': 'Invalid credentials'}), 401
         
         # Serialize user for response
+        print(f"📦 Serializing user data for login response...")
         user_data = serialize_user(user)
         
         # Create access token
+        print(f"🔐 Creating access token for user: {user.get('name', 'Unknown')}")
         access_token = create_access_token(identity=str(user['_id']))
         
+        print(f"✅ Login successful for user: {user.get('name', 'Unknown')}")
         return jsonify({
             'message': 'Login successful',
             'token': access_token,
@@ -373,8 +456,10 @@ def login():
         }), 200
         
     except Exception as e:
-        print(f"Login error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        print(f"❌ Login error: {e}")
+        import traceback
+        print(f"❌ Full traceback: {traceback.format_exc()}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/auth/profile', methods=['GET'])
 @jwt_required()
